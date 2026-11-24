@@ -94,13 +94,19 @@ textarea {
 label {
   display: block;
   font-weight: 600;
-  margin: 14px 0 7px;
+  margin: 20px 0 16px;
+}
+label > input:not([type="checkbox"]),
+label > select,
+label > textarea {
+  display: block;
+  margin-top: 10px;
 }
 label.check {
   font-weight: 400;
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: 12px;
 }
 input[type="checkbox"] {
   width: auto;
@@ -290,8 +296,8 @@ textarea:focus-visible {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
+  gap: 12px;
+  margin-top: 20px;
 }
 .empty {
   padding: 40px;
@@ -321,10 +327,17 @@ textarea:focus-visible {
 .form {
   max-width: 760px;
 }
+form > button {
+  margin-top: 8px;
+}
+#roles + button {
+  margin-top: 20px;
+}
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  column-gap: 24px;
+  row-gap: 0;
 }
 .stepper {
   display: flex;
@@ -362,7 +375,7 @@ textarea:focus-visible {
 }
 .starters {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   margin: 10px 0 24px;
 }
 .starters button {
@@ -419,6 +432,18 @@ textarea:focus-visible {
   background: transparent;
   padding: 7px;
 }
+.feedback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+.empty > button {
+  margin: 6px;
+}
+td > button {
+  margin: 0 12px 12px 0;
+}
 .disclosure {
   font-size: 12px;
   background: #ede9df;
@@ -440,6 +465,7 @@ textarea:focus-visible {
 }
 .composer button {
   padding: 8px 17px;
+  margin-top: 0;
 }
 .ai-note {
   text-align: center;
