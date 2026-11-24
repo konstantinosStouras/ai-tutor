@@ -178,7 +178,7 @@ async function admin(m, tab = "overview") {
   if (tab === "provider") {
     const choices = state.connections.filter((x) => !x.revoked);
     const selected = choices.find((x) => x.id === c.connection);
-    content = `<div class="warning">Requests and embeddings are charged to the instructor’s OpenAI account. Students never enter a key or select a model. Application quotas limit request counts; they are not a monetary billing cap.</div><form id="draft" class="form card"><label>Provider connection<select id="connection" name="connection" required><option value="">Choose a connection</option>${choices.map((x) => `<option value="${x.id}" ${x.id === c.connection ? "selected" : ""}>${esc(x.name)} · ${esc(x.masked)}</option>`).join("")}</select></label><label>Supported model<select name="model" id="model" required>${(selected?.models || []).map((x) => `<option ${x === c.model ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label><button class="primary">Save draft selection</button></form><form id="connect" class="card form" style="margin-top:20px"><h2>OpenAI connection</h2>${input("Connection name", "name", "", "text", true)}${input("API key", "key", "", "password", true)}<label>Save as<select name="replace"><option value="">New connection</option>${choices.map((x) => `<option value="${x.id}">Replace ${esc(x.name)}</option>`).join("")}</select></label><small>Validated on the server and saved in Google Cloud Secret Manager. A saved key can never be shown again.</small><div class="actions"><button class="primary">Validate & save connection</button></div></form><h3>Your connections</h3>${state.connections.map((x) => `<p>${esc(x.name)} · ${esc(x.masked)} · ${x.revoked ? "Revoked" : `<button data-action="revoke" data-connection="${x.id}">Revoke</button>`}</p>`).join("")}<p class="muted">Anthropic: unavailable in this pilot. Google Gemini: unavailable in this pilot.</p>`;
+    content = `${modelGuidance()}<div class="warning">Requests and embeddings are charged to the instructor’s OpenAI account. Students never enter a key or select a model. Application quotas limit request counts; they are not a monetary billing cap.</div><form id="draft" class="form card"><label>Provider connection<select id="connection" name="connection" required><option value="">Choose a connection</option>${choices.map((x) => `<option value="${x.id}" ${x.id === c.connection ? "selected" : ""}>${esc(x.name)} · ${esc(x.masked)}</option>`).join("")}</select></label><label>Supported model<select name="model" id="model" required>${(selected?.models || []).map((x) => `<option ${x === c.model ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label><button class="primary">Save draft selection</button></form><form id="connect" class="card form" style="margin-top:20px"><h2>OpenAI connection</h2>${input("Connection name", "name", "", "text", true)}${input("API key", "key", "", "password", true)}<label>Save as<select name="replace"><option value="">New connection</option>${choices.map((x) => `<option value="${x.id}">Replace ${esc(x.name)}</option>`).join("")}</select></label><small>Validated on the server and saved in Google Cloud Secret Manager. A saved key can never be shown again.</small><div class="actions"><button class="primary">Validate & save connection</button></div></form><h3>Your connections</h3>${state.connections.map((x) => `<p>${esc(x.name)} · ${esc(x.masked)} · ${x.revoked ? "Revoked" : `<button data-action="refreshConnection" data-connection="${x.id}">Refresh available models</button> <button data-action="revoke" data-connection="${x.id}">Revoke</button>`}</p>`).join("")}<p class="muted">Anthropic: unavailable in this pilot. Google Gemini: unavailable in this pilot.</p>`;
   }
   if (tab === "access") {
     const roster = await api("roster", { module: m.id });
@@ -311,10 +311,17 @@ async function admin(m, tab = "overview") {
         );
     };
 }
+function modelGuidance() {
+  return `<section class="card"><h2>Choose a tutor model</h2><p><strong>Guidance and standard API prices checked 24 November 2026.</strong> Prices below are USD per one million tokens, with uncached input and standard processing. Check the linked current rates before budgeting.</p><div class="scroll"><table><thead><tr><th>Model</th><th>Suggested use</th><th>Input</th><th>Output</th></tr></thead><tbody><tr><td>GPT-6.2 Sol</td><td>Suggested starting point for everyday course tutoring, hints and multilingual conversations, including Chinese. Validate with representative course questions.</td><td>$2</td><td>$10</td></tr><tr><td>GPT-6.2 Astra</td><td>OpenAI’s most capable model; consider for difficult reasoning, nuanced explanations and demanding courses. Multilingual support alone does not require it.</td><td>$8</td><td>$40</td></tr></tbody></table></div><p>Both models support multilingual text. Voice dictation uses the separate GPT-Transcribe model to recognize the original language; the tutor then replies in that language and adds English translations. No Chinese-specific tutor model is needed.</p><p>Illustration: 3,000 input tokens and 1,000 billed output tokens cost about $0.016 with Sol or $0.064 with Astra per question (about $16 / $64 for 1,000 such questions). This is arithmetic, not a measured average or spending cap. Retrieved documents add input; reasoning tokens and English translations add billed output. Non-English text can use different token counts. Transcription, document embeddings, Firebase, taxes and any regional surcharges are additional. GPT-Transcribe is $0.0045 per audio minute ($0.27 per hour), checked on the same date; this is additional to tutor text costs.</p><p>Our recommendation: start with Sol, test Chinese and your course’s hardest questions, and compare answers before choosing Astra. Existing published selections change only when you save and publish. Older GPT-4.1 options remain for existing modules; this guidance focuses on the current models. Availability depends on your OpenAI project.</p><p><a href="https://developers.openai.com/api/docs/models" target="_blank" rel="noopener">OpenAI model capabilities</a> · <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener">Current OpenAI pricing</a> · <a href="https://developers.openai.com/api/docs/models/gpt-transcribe" target="_blank" rel="noopener">Transcription pricing</a> · <a href="https://developers.openai.com/api/docs/guides/speech-to-text" target="_blank" rel="noopener">Multilingual transcription</a></p></section>`;
+}
 function currentModule() {
   return state.modules.find((m) => m.id === location.hash.split("/")[2]);
 }
 const actions = {
+  async refreshConnection(b) {
+    await api("refreshConnection", { connection: b.dataset.connection });
+    await refresh(); await render(); notify("Available models refreshed using the saved connection.");
+  },
   async suggestImprovements() {
     const r = await api("suggestImprovements", { module: currentModule().id });
     $("#improvement-suggestions").innerHTML =
@@ -381,7 +388,7 @@ const actions = {
     $(`#review-${conversation}`).innerHTML = rs
       .map(
         (r) =>
-          `<div class="record"><small>${new Date(r.at).toLocaleString("en-GB")} · ${esc(r.status)} · ${esc(r.model)} · configuration ${esc(r.configVersion)} · index ${esc(r.materialVersion)}</small><h3>Student question</h3><p>${esc(r.question)}</p><h3>Tutor response</h3><p>${esc(r.answer || r.error?.message || "Pending")}</p>${(r.sources || []).map((s) => `<button class="source-chip" data-review-source="${esc(s.id)}" data-request="${r.id}" data-conversation="${conversation}">${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}<p><small>${esc(r.feedback?.rating || "No feedback")} ${esc(r.feedback?.issue || "")}</small></p></div>`,
+          `<div class="record"><small>${new Date(r.at).toLocaleString("en-GB")} · ${esc(r.status)} · ${esc(r.model)} · configuration ${esc(r.configVersion)} · index ${esc(r.materialVersion)}</small><h3>Student question</h3><p>${esc(r.question)}</p>${englishMarkup(r)}<h3>Tutor response</h3><p>${esc(r.answer || r.error?.message || "Pending")}</p>${(r.sources || []).map((s) => `<button class="source-chip" data-review-source="${esc(s.id)}" data-request="${r.id}" data-conversation="${conversation}">${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}<p><small>${esc(r.feedback?.rating || "No feedback")} ${esc(r.feedback?.issue || "")}</small></p></div>`,
       )
       .join("");
     document
@@ -445,7 +452,7 @@ async function chat(m, preview = false) {
   }
   state.conversations = await api("conversations", { module: m.id });
   shell(
-    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="disclosure"><label class="check"><input id="ack" type="checkbox" ${state.acknowledged ? "checked" : ""}> <span>Your questions and tutor responses are saved. Your instructor can review them to improve this module’s tutor. <a href="#/privacy/${m.id}">Privacy details</a></span></label></div><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button></div></section><aside class="sources"><h2>Sources for this answer</h2>${state.sources.map((s) => `<button class="source-card" data-source="${esc(s.id)}" data-request="${esc(state.sourceRequest)}"><strong>▤ ${esc(s.filename)} · ${esc(s.locator)}</strong><blockquote>${esc(s.text.slice(0, 240))}…</blockquote></button>`).join("") || '<p class="muted">Supporting excerpts will appear here when you ask a question.</p>'}</aside></div>`,
+    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="disclosure"><label class="check"><input id="ack" type="checkbox" ${state.acknowledged ? "checked" : ""}> <span>Your questions and tutor responses are saved. Your instructor can review them to improve this module’s tutor. <a href="#/privacy/${m.id}">Privacy details</a></span></label></div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button></div></section><aside class="sources"><h2>Sources for this answer</h2>${state.sources.map((s) => `<button class="source-card" data-source="${esc(s.id)}" data-request="${esc(state.sourceRequest)}"><strong>▤ ${esc(s.filename)} · ${esc(s.locator)}</strong><blockquote>${esc(s.text.slice(0, 240))}…</blockquote></button>`).join("") || '<p class="muted">Supporting excerpts will appear here when you ask a question.</p>'}</aside></div>`,
     m,
     true,
   );
@@ -456,6 +463,54 @@ async function chat(m, preview = false) {
         $("#question").focus();
       }),
   );
+  $("#voice-file").onchange = e => run(async () => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!state.acknowledged) throw Error("Acknowledge the recording notice first. Audio is sent to OpenAI and is not saved by this app.");
+    if (file.size > 2 * 1024 * 1024) throw Error("Recording exceeds 2 MB.");
+    const box = $("#question"), status = $("#voice-status");
+    status.textContent = "Transcribing recording…";
+    const mime = file.type.split(";")[0].replace("audio/x-wav", "audio/wav");
+    try {
+      const result = await api("transcribe", { module: m.id, preview, acknowledged: true, mime, audio: await blobBase64(file) });
+      if (!box.isConnected) return;
+      box.value = (box.value + " " + result.text).trim(); box.focus();
+      status.textContent = "Review or edit your transcript, then send. English translations appear with the reply.";
+    } catch (error) { status.textContent = "Transcription failed. Please try again or type your question."; throw error; }
+    finally { e.target.value = ""; }
+  });
+  let recording = null;
+  $("#dictate").onclick = () => run(async () => {
+    if (recording) { recording.stop(); return; }
+    if (!state.acknowledged) throw Error("Acknowledge the recording notice first. Audio is sent to OpenAI for transcription and is not saved by this app.");
+    if (m.paused) throw Error("Your instructor has paused this tutor.");
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw Error("Voice input is unavailable in this browser. Please type your question.");
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t));
+    if (!mime) { stream.getTracks().forEach(t => t.stop()); throw Error("Unsupported recording format. Please type your question."); }
+    const recorder = new MediaRecorder(stream, { mimeType: mime });
+    recording = recorder;
+    const parts = []; let bytes = 0;
+    recorder.ondataavailable = e => { parts.push(e.data); bytes += e.data.size; if (bytes >= 1900000 && recorder.state === "recording") recorder.stop(); };
+    const timer = setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 60000);
+    recorder.onstop = () => {
+      clearTimeout(timer); stream.getTracks().forEach(t => t.stop()); recording = null;
+      const box = $("#question"), status = $("#voice-status"), button = $("#dictate");
+      if (!box?.isConnected) return;
+      button.textContent = "🎙 Speak your question"; button.disabled = true; status.textContent = "Transcribing…";
+      run(async () => {
+        try {
+          const audio = await blobBase64(new Blob(parts, { type: mime }));
+          const result = await api("transcribe", { module: m.id, preview, acknowledged: true, mime, audio });
+          if (!box.isConnected) return;
+          box.value = (box.value + " " + result.text).trim(); box.focus();
+          status.textContent = "Review or edit your transcript, then send. English translations appear with the reply.";
+        } catch (error) { status.textContent = "Transcription failed. Please try again or type your question."; throw error; } finally { button.disabled = false; }
+      });
+    };
+    recorder.start(1000); $("#dictate").textContent = "Stop recording";
+    $("#voice-status").textContent = "Listening… Stop when finished (maximum 60 seconds). Audio will be sent to OpenAI. Your instructor can review the submitted text.";
+  });
   $("#ack").onchange = (e) => (state.acknowledged = e.target.checked);
   $("#new-conversation").onclick = () => {
     state.conversation = crypto.randomUUID();
@@ -491,7 +546,13 @@ async function chat(m, preview = false) {
           "Resolve the pending question first. Retry with the same text to avoid duplicate requests.",
         );
       const request = state.pending?.request || crypto.randomUUID();
-      state.pending = { request, question };
+      let attachments = state.pending?.attachments || [];
+      const file = $("#student-file").files[0];
+      if (!state.pending && file) {
+        if (file.size > 4 * 1024 * 1024) throw Error("Document exceeds 4 MB.");
+        attachments = [{ filename: file.name, data: await blobBase64(file) }];
+      }
+      state.pending = { request, question, attachments };
       $("#messages").insertAdjacentHTML(
         "beforeend",
         '<p id="thinking" role="status">Finding module evidence and preparing an answer…</p>',
@@ -502,6 +563,7 @@ async function chat(m, preview = false) {
           conversation: state.conversation,
           request,
           question,
+          attachments,
           acknowledged: true,
           preview,
         });
@@ -575,13 +637,25 @@ async function chat(m, preview = false) {
   if (state.pending) $("#question").value = state.pending.question;
   $("#messages").scrollTop = $("#messages").scrollHeight;
 }
+function englishMarkup(r) {
+  if (!r.questionEnglish && !r.answerEnglish) return "";
+  return '<details class="english"><summary>English translation</summary><p dir="auto">' + esc(r.questionEnglish || "") + '</p><p dir="auto">' + esc(r.answerEnglish || "") + '</p></details>';
+}
+async function blobBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(Error("Unable to read file or recording."));
+    reader.readAsDataURL(blob);
+  });
+}
 function messageMarkup(r) {
-  return `<div class="question">${esc(r.question)}</div><article class="answer"><p>${esc(r.answer || r.error?.message || (r.status === "pending" ? "Preparing your answer…" : "No answer was produced."))}</p>${r.example ? `<div class="example"><strong>Generated practice example</strong><p>${esc(r.example)}</p></div>` : ""}<div>${(r.sources || []).map((s) => `<button class="source-chip" data-source="${esc(s.id)}" data-request="${r.id}">▣ ${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}</div><small>${esc(r.status)}${r.insufficient ? " · Insufficient evidence" : ""}</small><div class="feedback"><button data-feedback="helpful" data-request="${r.id}" aria-label="Helpful response">♧ Helpful</button><button data-feedback="unhelpful" data-request="${r.id}">Not helpful</button><button data-feedback="issue" data-request="${r.id}">⚑ Report an issue</button></div></article>`;
+  return `<div class="question" dir="auto">${esc(r.question)}${(r.attachments || []).map(f => `<small> · ${esc(f.filename)} (student upload)</small>`).join("")}</div>${englishMarkup(r)}<article class="answer" dir="auto"><p>${esc(r.answer || r.error?.message || (r.status === "pending" ? "Preparing your answer…" : "No answer was produced."))}</p>${r.example ? `<div class="example"><strong>Generated practice example</strong><p>${esc(r.example)}</p></div>` : ""}<div>${(r.sources || []).map((s) => `<button class="source-chip" data-source="${esc(s.id)}" data-request="${r.id}">▣ ${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}</div><small>${esc(r.status)}${r.insufficient ? " · Insufficient evidence" : ""}</small><div class="feedback"><button data-feedback="helpful" data-request="${r.id}" aria-label="Helpful response">♧ Helpful</button><button data-feedback="unhelpful" data-request="${r.id}">Not helpful</button><button data-feedback="issue" data-request="${r.id}">⚑ Report an issue</button></div></article>`;
 }
 function privacy(m) {
   const c = cfg(m);
   shell(
-    `<article class="privacy"><a href="#/t/${m.id}">← Return to tutor</a><h1>Your questions & privacy</h1><h2>What is recorded</h2><p>Your question, tutor response, authenticated student ID, module and conversation identifiers, timestamp, request status, model and configuration versions, retrieved source excerpts, response time, returned token usage and feedback. We do not save hidden model reasoning or provider secrets in conversation records.</p><h2>Who can review it</h2><p>You can see your own history. The module owner and explicitly authorized collaborators can review module conversations to improve teaching. Platform administrators have explicit audited administrative privileges. Students cannot see one another’s conversations.</p><h2>Retention & deletion</h2><p>This module retains conversation records for ${c.retentionDays || 90} days after last activity; daily maintenance removes expired conversations. Hiding a conversation removes it from your visible history while retaining the instructor review record. You can export your questions or request permanent erasure below. Your instructor reviews erasure requests. Minimal audit metadata is retained for 365 days.</p><h2>What goes to the provider</h2><p>OpenAI receives extracted text for embeddings, student questions for retrieval and generation, selected supporting excerpts, and tutor instructions. Direct student names and email addresses are not added to model prompts. Do not include unnecessary personal or sensitive data in your question. Responses use store:false; this is not a promise of zero provider retention. <a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener">OpenAI data controls</a> describe applicable abuse monitoring and account-specific controls.</p><h2>How answers work</h2><p>Answers are generated from selected active module excerpts; the full collection is not sent with every question. Sources are checked against retrieved evidence, but citation relevance and factual accuracy are not guaranteed. Generated practice examples, when enabled by your instructor, are labelled separately. No conversations are automatically used for training or fine-tuning and published instructions are never automatically rewritten.</p><div class="actions"><button id="export-private">Export my questions</button><button id="erasure">Request permanent erasure</button></div></article>`,
+    `<article class="privacy"><a href="#/t/${m.id}">← Return to tutor</a><h1>Your questions & privacy</h1><h2>What is recorded</h2><p>Your question, tutor response, authenticated student ID, module and conversation identifiers, timestamp, request status, model and configuration versions, retrieved source excerpts, response time, returned token usage and feedback. We do not save hidden model reasoning or provider secrets in conversation records.</p><h2>Who can review it</h2><p>You can see your own history. The module owner and explicitly authorized collaborators can review module conversations to improve teaching. Platform administrators have explicit audited administrative privileges. Students cannot see one another’s conversations.</p><h2>Retention & deletion</h2><p>This module retains conversation records for ${c.retentionDays || 90} days after last activity; daily maintenance removes expired conversations. Hiding a conversation removes it from your visible history while retaining the instructor review record. You can export your questions or request permanent erasure below. Your instructor reviews erasure requests. Minimal audit metadata is retained for 365 days.</p><h2>What goes to the provider</h2><p>Voice recordings are sent to OpenAI for transcription; this app does not save audio. Original submitted text and English translations are retained with the conversation. Student documents are used for the attached question only; cited excerpts are retained and visible to authorized instructors, while the original file is not saved. OpenAI receives extracted text for embeddings, student questions for retrieval and generation, selected supporting excerpts, and tutor instructions. Direct student names and email addresses are not added to model prompts. Do not include unnecessary personal or sensitive data in your question. Responses use store:false; this is not a promise of zero provider retention. <a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener">OpenAI data controls</a> describe applicable abuse monitoring and account-specific controls.</p><h2>How answers work</h2><p>Answers are generated from selected active module excerpts; the full collection is not sent with every question. Sources are checked against retrieved evidence, but citation relevance and factual accuracy are not guaranteed. Generated practice examples, when enabled by your instructor, are labelled separately. No conversations are automatically used for training or fine-tuning and published instructions are never automatically rewritten.</p><div class="actions"><button id="export-private">Export my questions</button><button id="erasure">Request permanent erasure</button></div></article>`,
     m,
   );
   $("#export-private").onclick = () => run(() => downloadExport(m.id));

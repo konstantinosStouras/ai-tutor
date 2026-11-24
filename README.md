@@ -25,3 +25,5 @@ For local development serve this folder over HTTP, authorize localhost in Fireba
 Authentication and App Check, and use the backend emulator instructions. No mock
 provider or demo account is included in the production frontend. Browser tests
 intercept Firebase modules explicitly; their test responses are not live AI.
+
+Local update: student chat now includes microphone dictation, one private document attachment per question, and expandable English translations. The backend update must be deployed alongside this frontend before publishing. Voice input uses stop-and-transcribe; students review the original-language transcript before sending.
