@@ -559,6 +559,58 @@ async function showSource(
   $("#source").showModal();
 }
 $("#close-source").onclick = () => $("#source").close();
+function composer(paused) {
+  const disabled = paused ? "disabled" : "";
+  const send = state.editing ? "Save & regenerate" : "Send question";
+  return `<form id="ask" class="composer">
+    <textarea id="question" rows="2" maxlength="4000" required aria-label="Ask about your module" placeholder="Ask about your module…" ${disabled}></textarea>
+    <div class="composer-tools">
+      <button id="add-file" type="button" aria-expanded="false" aria-controls="file-options" aria-label="Add attachment" title="Add attachment" ${disabled}>+</button>
+      <div id="file-options" hidden>
+        <button type="button" data-picker="student-file">Attach a document <small>Up to 4 MB</small></button>
+        <button type="button" data-picker="voice-file">Transcribe a recording <small>Up to 2 MB</small></button>
+      </div>
+      <input id="student-file" hidden type="file" accept=".pdf,.docx,.pptx,.txt,.md">
+      <input id="voice-file" hidden type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg">
+      <button id="remove-file" type="button" hidden title="Remove attachment"></button>
+      <button id="dictate" type="button" aria-label="Speak your question" title="Speak your question" aria-pressed="false" ${disabled}>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3"/></svg>
+      </button>
+      <button type="submit" class="primary" aria-label="${send}" title="${send}" ${disabled}>↑</button>
+    </div>
+  </form><p id="voice-status" role="status"></p>`;
+}
+
+function bindAttachments() {
+  const add = $("#add-file"), options = $("#file-options");
+  function toggleOptions(open) {
+    options.hidden = !open;
+    add.setAttribute("aria-expanded", String(open));
+  }
+  add.onclick = () => toggleOptions(options.hidden);
+  $("#ask").onfocusout = e => {
+    if (!options.contains(e.relatedTarget) && e.relatedTarget !== add) toggleOptions(false);
+  };
+  $("#ask").onkeydown = e => {
+    if (e.key === "Escape" && !options.hidden) { toggleOptions(false); add.focus(); }
+  };
+  options.onclick = e => {
+    const item = e.target.closest("[data-picker]");
+    if (!item) return;
+    toggleOptions(false);
+    add.focus();
+    document.getElementById(item.dataset.picker).click();
+  };
+  const fileInput = $("#student-file"), remove = $("#remove-file");
+  fileInput.onchange = () => {
+    const file = fileInput.files[0];
+    remove.hidden = !file;
+    remove.textContent = file ? file.name + " ×" : "";
+    remove.setAttribute("aria-label", file ? "Remove " + file.name : "Remove attachment");
+  };
+  remove.onclick = () => { fileInput.value = ""; fileInput.onchange(); add.focus(); };
+}
+
 async function chat(m, preview = false) {
   const config = preview ? m.draft : m.published;
   if (!config) throw Error("This tutor is not published.");
@@ -573,7 +625,7 @@ async function chat(m, preview = false) {
   state.conversations = await api("conversations", { module: m.id });
   const currentConversation = state.conversations.find(c => c.id === state.conversation);
   shell(
-    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}${currentConversation ? `<form id="conversation-title" class="conversation-title"><label>Conversation title<input name="title" maxlength="90" required value="${esc(currentConversation.title)}"></label><button type="submit">Save title</button></form>` : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p>${state.editing ? `<div class="warning" role="status">Editing your question. Save & regenerate replaces its answer and removes later exchanges from your chat. Instructor review records remain. Reattach any document needed for the new answer.<div class="actions"><button id="cancel-edit" type="button">Cancel edit</button></div></div>` : ""}<form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="${state.editing ? "Save & regenerate" : "Send question"}" ${m.paused ? "disabled" : ""}>${state.editing ? "Save & regenerate" : "➤"}</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide" ${currentConversation ? "" : "disabled"}>Delete conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
+    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}${currentConversation ? `<form id="conversation-title" class="conversation-title"><label>Conversation title<input name="title" maxlength="90" required value="${esc(currentConversation.title)}"></label><button type="submit">Save title</button></form>` : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div>${state.editing ? `<div class="warning" role="status">Editing your question. Save & regenerate replaces its answer and removes later exchanges from your chat. Instructor review records remain. Reattach any document needed for the new answer.<div class="actions"><button id="cancel-edit" type="button">Cancel edit</button></div></div>` : ""}${composer(m.paused)}<p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide" ${currentConversation ? "" : "disabled"}>Delete conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
     m,
     true,
   );
@@ -584,6 +636,7 @@ async function chat(m, preview = false) {
         $("#question").focus();
       }),
   );
+  bindAttachments();
   $("#voice-file").onchange = e => run(async () => {
     const file = e.target.files[0];
     if (!file) return;
@@ -599,6 +652,7 @@ async function chat(m, preview = false) {
     } catch (error) { status.textContent = "Transcription failed. Please try again or type your question."; throw error; }
     finally { e.target.value = ""; }
   });
+  const box = $("#question"), status = $("#voice-status"), button = $("#dictate");
   let recording = null;
   $("#dictate").onclick = () => run(async () => {
     if (recording) { recording.stop(); return; }
@@ -614,9 +668,8 @@ async function chat(m, preview = false) {
     const timer = setTimeout(() => { if (recorder.state === "recording") recorder.stop(); }, 60000);
     recorder.onstop = () => {
       clearTimeout(timer); stream.getTracks().forEach(t => t.stop()); recording = null;
-      const box = $("#question"), status = $("#voice-status"), button = $("#dictate");
       if (!box?.isConnected) return;
-      button.textContent = "🎙 Speak your question"; button.disabled = true; status.textContent = "Transcribing…";
+      button.setAttribute("aria-pressed", "false"); button.title = button.ariaLabel = "Speak your question"; button.disabled = true; status.textContent = "Transcribing…";
       run(async () => {
         try {
           const audio = await blobBase64(new Blob(parts, { type: mime }));
@@ -627,7 +680,7 @@ async function chat(m, preview = false) {
         } catch (error) { status.textContent = "Transcription failed. Please try again or type your question."; throw error; } finally { button.disabled = false; }
       });
     };
-    recorder.start(1000); $("#dictate").textContent = "Stop recording";
+    recorder.start(1000); button.setAttribute("aria-pressed", "true"); button.title = button.ariaLabel = "Stop recording";
     $("#voice-status").textContent = "Listening… Stop when finished (maximum 60 seconds). Audio will be sent to OpenAI. Your instructor can review the submitted text.";
   });
   $("#new-conversation").onclick = () => {
