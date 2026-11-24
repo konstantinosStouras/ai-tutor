@@ -13,7 +13,7 @@ Routes work without web-server rewrites:
 - `/ai-tutor/` — Google sign-in, then the authorized dashboard.
 - `/ai-tutor/#/create` — instructor setup.
 - `/ai-tutor/#/admin/MODULE_ID` — separate instructor administration.
-- `/ai-tutor/#/t/MODULE_ID` — stable enrolled-student tutor page.
+- `/ai-tutor/bmgt41040` — student link, initially derived from the module code. Instructors can edit its ending in **Preview & publication**. Previous endings and legacy `#/t/MODULE_ID` links continue to open the same tutor after authorization. The site's root 404 handler forwards clean paths to the tutor app on GitHub Pages.
 - `/ai-tutor/#/preview/MODULE_ID` — authorized instructor draft preview.
 - `/ai-tutor/#/privacy/MODULE_ID` — recording, retention, export and erasure details.
 

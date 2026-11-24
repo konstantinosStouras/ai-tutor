@@ -21,6 +21,12 @@ const state = {
 };
 let auth, authSDK, call;
 let authEpoch = 0;
+const tutorRoot = "/ai-tutor/";
+const studentPath = slug => tutorRoot + encodeURIComponent(slug);
+const studentHref = m => m.slug ? studentPath(m.slug) : `#/t/${m.id}`;
+const incomingStudent = new URLSearchParams(location.search).get("student");
+if (location.pathname === tutorRoot && /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(incomingStudent || ""))
+  history.replaceState(null, "", studentPath(incomingStudent.toLowerCase()) + location.hash);
 function notify(message) {
   $("#notice").textContent = message;
   clearTimeout(notify.timer);
@@ -67,8 +73,9 @@ function shell(content, selected = null, student = false) {
   const select = $("#module-switch");
   if (select)
     select.onchange = () => {
-      if (select.value)
-        location.hash = `/${student ? "t" : "admin"}/${select.value}`;
+      if (!select.value) return;
+      if (student) openStudent(state.modules.find(m => m.id === select.value));
+      else location.hash = `/admin/${select.value}`;
     };
 }
 function bindActions() {
@@ -84,7 +91,7 @@ function dashboard() {
       state.modules
         .map((m) => {
           const c = cfg(m);
-          return `<article class="card"><span class="pill">${esc(m.paused ? "Paused" : m.published ? "Published" : "Draft")}</span><p class="muted">${esc(c.code)}</p><h2>${esc(c.title)}</h2><p>${esc(c.name)}</p>${m.manage ? `<small>${esc(c.model || "Model not selected")} · ${m.lastActivity ? `Last activity ${new Date(m.lastActivity).toLocaleDateString("en-GB")}` : "No activity yet"}</small><div class="actions"><a class="button" href="#/admin/${m.id}">Configure</a><a class="button" href="#/preview/${m.id}">Preview</a><a class="button" href="#/admin/${m.id}/conversations">Conversations</a><a class="button" href="#/admin/${m.id}/analytics">Analytics</a></div>` : `<a class="button primary" href="#/t/${m.id}">Open tutor</a>`}</article>`;
+          return `<article class="card"><span class="pill">${esc(m.paused ? "Paused" : m.published ? "Published" : "Draft")}</span><p class="muted">${esc(c.code)}</p><h2>${esc(c.title)}</h2><p>${esc(c.name)}</p>${m.manage ? `<small>${esc(c.model || "Model not selected")} · ${m.lastActivity ? `Last activity ${new Date(m.lastActivity).toLocaleDateString("en-GB")}` : "No activity yet"}</small><div class="actions"><a class="button" href="#/admin/${m.id}">Configure</a><a class="button" href="#/preview/${m.id}">Preview</a><a class="button" href="#/admin/${m.id}/conversations">Conversations</a><a class="button" href="#/admin/${m.id}/analytics">Analytics</a></div>` : `<a class="button primary" data-student-link href="${esc(studentHref(m))}">Open tutor</a>`}</article>`;
         })
         .join("") ||
       `<div class="empty">${state.user.instructor ? "Create your first module tutor to get started." : "No modules are available yet. Ask your instructor to enroll the Google account you used to sign in."}</div>`
@@ -92,7 +99,14 @@ function dashboard() {
   );
   document.querySelectorAll(".cards .card").forEach((card, index) => {
     const m = state.modules[index];
-    if (!m.manage) return;
+    if (!m.manage) {
+      card.querySelector("[data-student-link]").onclick = event => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        openStudent(m);
+      };
+      return;
+    }
     card.querySelector(".pill").textContent =
       m.status || (m.paused ? "Paused" : m.published ? "Published" : "Draft");
     const meta = document.createElement("p");
@@ -185,7 +199,12 @@ async function admin(m, tab = "overview") {
     content = `<div class="card form"><h2>Enroll Google accounts</h2><p>A tutor link alone does not grant access. Personal and Workspace Google accounts, including UCD accounts, are supported.</p><form id="enroll">${input("Student Google email", "email", "", "email", true)}<button class="primary">Enroll student</button></form></div><h3>${roster.filter((x) => x.active).length} enrolled students</h3><div class="scroll"><table><tbody>${roster.map((x) => `<tr><td>${esc(x.email)}</td><td>${x.active ? "Enrolled" : "Removed"}</td><td>${x.active ? `<button data-action="unenroll" data-email="${esc(x.email)}">Remove access</button>` : ""}</td></tr>`).join("")}</tbody></table></div><form id="collaborate" class="card form" style="margin-top:20px"><h3>Collaborator access</h3><p>Only the owner can grant a collaborator. Use their Firebase user ID after they sign in.</p>${input("Collaborator user ID", "uid", "", "text", true)}<button>Add collaborator</button></form>`;
   }
   if (tab === "publish")
-    content = `<section class="card form"><h2>Test, then publish</h2><p>Draft changes do not alter the published tutor. All student materials must be ready, with an active provider connection and supported model.</p><p>Current publication: ${m.published ? `version ${m.version}` : "Not published"}</p><div class="actions"><a class="button" href="#/preview/${m.id}">Test draft</a><button class="primary" data-action="publish">Publish new version</button><button data-action="pause">${m.paused ? "Resume tutor" : "Pause tutor"}</button></div>${m.published ? `<label>Student link<input readonly value="${esc(`${location.origin}/ai-tutor/#/t/${m.id}`)}"></label>` : ""}</section>`;
+    content = `<section class="card form"><h2>Test, then publish</h2><p>Draft changes do not alter the published tutor. All student materials must be ready, with an active provider connection and supported model.</p><p>Current publication: ${m.published ? `version ${m.version}` : "Not published"}</p><div class="actions"><a class="button" href="#/preview/${m.id}">Test draft</a><button class="primary" data-action="publish">Publish new version</button><button data-action="pause">${m.paused ? "Resume tutor" : "Pause tutor"}</button></div></section>
+      <form id="student-link" class="card form"><h2>Student link</h2>
+      <label>Link ending<input name="ending" value="${esc(m.slug)}" maxlength="64" required aria-describedby="link-help"></label>
+      <small id="link-help">Choose a unique ending using letters, numbers, hyphens or underscores. Previous links keep working. Students need enrollment and a published tutor.</small>
+      <button class="primary">Save link ending</button>
+      <label>Student URL<input readonly value="${esc(new URL(studentPath(m.slug), location.origin).href)}"></label></form>`;
   if (tab === "privacy") {
     const reqs = await api("deletionRequests", { module: m.id });
     content = `<form id="draft" class="card form"><h2>Retention & quotas</h2>${input("Conversation retention (7–365 days)", "retentionDays", c.retentionDays, "number")}${input("Module questions per day (1–5000)", "dailyQuota", c.dailyQuota, "number")}${input("Questions per student per day (1–100)", "studentDailyQuota", c.studentDailyQuota, "number")}<p>Daily maintenance permanently deletes conversations past their last-activity retention window. Publish changes to apply them to students. Audit metadata is kept for 365 days. No institutional approval or legal compliance is claimed.</p><button class="primary">Save draft</button></form><h3>Student erasure requests</h3>${reqs.map((r) => `<p>${esc(r.email)} · ${esc(r.state)} ${r.state === "requested" ? `<button data-action="approveDeletion" data-request="${r.id}">Approve permanent erasure</button>` : ""}</p>`).join("") || "<p>No requests.</p>"}<p><a href="#/privacy/${m.id}">Read student privacy details</a></p>`;
@@ -226,6 +245,16 @@ async function admin(m, tab = "overview") {
     m,
   );
   bindActions();
+  if ($("#student-link")) $("#student-link").onsubmit = e => {
+    e.preventDefault();
+    const ending = new FormData(e.target).get("ending");
+    run(async () => {
+      const result = await api("setStudentLink", { module: m.id, ending });
+      m.slug = result.slug;
+      await render();
+      notify("Student link saved.");
+    }, e.submitter);
+  };
   if ($("#draft"))
     $("#draft").onsubmit = (e) => {
       e.preventDefault();
@@ -690,10 +719,36 @@ function privacy(m) {
     });
 }
 let renderSequence = 0;
+function openStudent(m) {
+  history.pushState(null, "", studentHref(m));
+  run(render);
+}
 async function render() {
   if (!state.user) return login();
   const seq = ++renderSequence;
   const [kind, moduleId, tab] = location.hash.replace(/^#\//, "").split("/");
+  const direct = /^\/ai-tutor\/([a-z0-9][a-z0-9_-]{0,63})\/?$/i.exec(location.pathname);
+  if (direct && !location.hash) {
+    const ending = direct[1].toLowerCase();
+    let m = state.modules.find(x => x.slug === ending && x.published);
+    if (!m) {
+      try {
+        const link = await api("resolveStudentLink", { ending });
+        m = state.modules.find(x => x.id === link.id && x.published);
+        if (m) m.slug = link.slug;
+      } catch (error) {
+        if (seq === renderSequence) {
+          shell('<section class="card"><h1>Tutor unavailable</h1><p>' + esc(error.message) + '</p><a href="#/">Return to dashboard</a></section>');
+        }
+        return;
+      }
+    }
+    if (seq !== renderSequence) return;
+    if (!m) return dashboard();
+    history.replaceState(null, "", studentPath(m.slug));
+    return chat(m, false);
+  }
+  if (direct && location.hash) history.replaceState(null, "", tutorRoot + location.hash);
   if (!kind) return dashboard();
   if (kind === "create") return create();
   const m = state.modules.find((x) => x.id === moduleId);
@@ -703,12 +758,15 @@ async function render() {
     );
   if (seq !== renderSequence) return;
   if (kind === "admin") await admin(m, tab);
-  else if (kind === "t" || kind === "preview")
+  else if (kind === "t" || kind === "preview") {
+    if (kind === "t" && m.slug && m.published)
+      history.replaceState(null, "", studentPath(m.slug));
     await chat(m, kind === "preview");
+  }
   else if (kind === "privacy") privacy(m);
   else dashboard();
 }
-window.addEventListener("hashchange", () => run(render));
+window.addEventListener("popstate", () => run(render));
 async function init() {
   const c = window.TUTOR_CONFIG;
   if (c?.backendReady === false)
@@ -746,6 +804,7 @@ async function init() {
   authSDK.onAuthStateChanged(auth, (user) =>
     run(async () => {
       authEpoch++;
+      renderSequence++;
       state.chatModule = null;
       state.conversation = crypto.randomUUID();
       state.conversations = [];
