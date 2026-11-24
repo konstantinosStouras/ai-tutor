@@ -625,7 +625,7 @@ async function chat(m, preview = false) {
   state.conversations = await api("conversations", { module: m.id });
   const currentConversation = state.conversations.find(c => c.id === state.conversation);
   shell(
-    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}${currentConversation ? `<form id="conversation-title" class="conversation-title"><label>Conversation title<input name="title" maxlength="90" required value="${esc(currentConversation.title)}"></label><button type="submit">Save title</button></form>` : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div>${state.editing ? `<div class="warning" role="status">Editing your question. Save & regenerate replaces its answer and removes later exchanges from your chat. Instructor review records remain. Reattach any document needed for the new answer.<div class="actions"><button id="cancel-edit" type="button">Cancel edit</button></div></div>` : ""}${composer(m.paused)}<p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide" ${currentConversation ? "" : "disabled"}>Delete conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
+    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}${currentConversation ? `<form id="conversation-title" class="conversation-title"><label>Conversation title<input name="title" maxlength="90" required value="${esc(currentConversation.title)}"></label><button type="submit">Save title</button></form>` : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div>${state.editing ? `<div class="warning" role="status">Editing your question. Save & regenerate replaces its answer and removes later exchanges from your chat. Reattach any document needed for the new answer.<div class="actions"><button id="cancel-edit" type="button">Cancel edit</button></div></div>` : ""}${composer(m.paused)}<p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide" ${currentConversation ? "" : "disabled"}>Delete conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
     m,
     true,
   );
@@ -800,26 +800,19 @@ async function chat(m, preview = false) {
     $("#question").focus();
   }));
   document.querySelectorAll("[data-delete-request]").forEach(b => b.onclick = () => run(async () => {
-    if (!confirm("Delete this question and its answer from your chat? Instructor review records remain under the module retention policy.")) return;
-    const result = await api("deleteExchange", { module: m.id, conversation: state.conversation, request: b.dataset.deleteRequest });
+    await api("deleteExchange", { module: m.id, conversation: state.conversation, request: b.dataset.deleteRequest });
     state.messages = await api("messages", { module: m.id, conversation: state.conversation });
     state.editing = null;
     await chat(m, preview);
-    notify(result.notice);
   }, b));
   if ($("#cancel-edit")) $("#cancel-edit").onclick = () => { state.editing = null; run(() => chat(m, preview)); };
   $("#export-own").onclick = () => run(() => downloadExport(m.id));
   $("#hide").onclick = () =>
     run(async () => {
-      if (!confirm("Delete this conversation from your chat history? Instructor review records remain until retention expires or an erasure request is approved.")) return;
-      notify(
-        (
-          await api("deleteConversation", {
-            module: m.id,
-            conversation: state.conversation,
-          })
-        ).notice,
-      );
+      await api("deleteConversation", {
+        module: m.id,
+        conversation: state.conversation,
+      });
       state.conversation = crypto.randomUUID();
       state.messages = [];
       state.editing = null;
