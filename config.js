@@ -1,6 +1,6 @@
 // Public Firebase web configuration only. Never place provider keys here.
 window.TUTOR_CONFIG = {
-  backendReady: false,
+  backendReady: true,
   firebase: {
     apiKey: "AIzaSyBex83esAV_kEnjR4Zr7_HFUQartP3cfiQ",
     authDomain: "stouras-ai-tutor.firebaseapp.com",
