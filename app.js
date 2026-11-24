@@ -97,7 +97,7 @@ function dashboard() {
       m.status || (m.paused ? "Paused" : m.published ? "Published" : "Draft");
     const meta = document.createElement("p");
     meta.className = "muted";
-    meta.textContent = `${m.studentCount || 0} enrolled students · OpenAI`;
+    meta.textContent = `${m.studentCount || 0} enrolled students`;
     card.insertBefore(meta, card.querySelector(".actions"));
   });
   if (state.user.admin) {
@@ -178,7 +178,7 @@ async function admin(m, tab = "overview") {
   if (tab === "provider") {
     const choices = state.connections.filter((x) => !x.revoked);
     const selected = choices.find((x) => x.id === c.connection);
-    content = `${modelGuidance()}<div class="warning">Requests and embeddings are charged to the instructor’s OpenAI account. Students never enter a key or select a model. Application quotas limit request counts; they are not a monetary billing cap.</div><form id="draft" class="form card"><label>Provider connection<select id="connection" name="connection" required><option value="">Choose a connection</option>${choices.map((x) => `<option value="${x.id}" ${x.id === c.connection ? "selected" : ""}>${esc(x.name)} · ${esc(x.masked)}</option>`).join("")}</select></label><label>Supported model<select name="model" id="model" required>${(selected?.models || []).map((x) => `<option ${x === c.model ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label><button class="primary">Save draft selection</button></form><form id="connect" class="card form" style="margin-top:20px"><h2>OpenAI connection</h2>${input("Connection name", "name", "", "text", true)}${input("API key", "key", "", "password", true)}<label>Save as<select name="replace"><option value="">New connection</option>${choices.map((x) => `<option value="${x.id}">Replace ${esc(x.name)}</option>`).join("")}</select></label><small>Validated on the server and saved in Google Cloud Secret Manager. A saved key can never be shown again.</small><div class="actions"><button class="primary">Validate & save connection</button></div></form><h3>Your connections</h3>${state.connections.map((x) => `<p>${esc(x.name)} · ${esc(x.masked)} · ${x.revoked ? "Revoked" : `<button data-action="refreshConnection" data-connection="${x.id}">Refresh available models</button> <button data-action="revoke" data-connection="${x.id}">Revoke</button>`}</p>`).join("")}<p class="muted">Anthropic: unavailable in this pilot. Google Gemini: unavailable in this pilot.</p>`;
+    content = `${modelGuidance()}<div class="warning">Your selected providers bill their respective accounts. If a provider reports exhausted funds or quota, the tutor tries the next backup in order. Students never enter a key or select a model. Application quotas limit request counts; they are not a monetary billing cap.</div><form id="draft" class="form card"><label>Provider connection<select id="connection" name="connection" required><option value="">Choose a connection</option>${choices.map((x) => `<option value="${x.id}" ${x.id === c.connection ? "selected" : ""}>${esc(x.name)} · ${esc(x.provider || "openai")} · ${esc(x.masked)}</option>`).join("")}</select></label><label>Supported model<select name="model" id="model" required>${(selected?.models || []).map((x) => `<option ${x === c.model ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></label><h3>Backup connections</h3><div id="backups"></div><button type="button" id="add-backup">Add backup</button><button class="primary">Save draft selection</button></form><form id="connect" class="card form" style="margin-top:20px"><h2>Add a provider connection</h2><label>API provider<select name="provider" id="api-provider">${Object.entries(state.catalog).filter(([, v]) => v.available).map(([id, v]) => `<option value="${esc(id)}">${esc(v.label || id)}</option>`).join("")}</select></label>${input("Connection name", "name", "", "text", true)}${input("API key", "key", "", "password", true)}<label>Save as<select name="replace"><option value="">New connection</option>${choices.map((x) => `<option value="${x.id}">Replace ${esc(x.name)}</option>`).join("")}</select></label><small>Validated on the server and saved in Google Cloud Secret Manager. A saved key can never be shown again.</small><div class="actions"><button class="primary">Validate & save connection</button></div></form><h3>Your connections</h3>${state.connections.map((x) => `<p>${esc(x.name)} · ${esc(x.masked)} · ${x.revoked ? "Revoked" : `<button data-action="refreshConnection" data-connection="${x.id}">Refresh available models</button> <button data-action="revoke" data-connection="${x.id}">Revoke</button>`}</p>`).join("")}<p class="muted">For an openly licensed model, look for Mistral Small 4 on your Mistral AI connection.</p>`;
   }
   if (tab === "access") {
     const roster = await api("roster", { module: m.id });
@@ -232,6 +232,7 @@ async function admin(m, tab = "overview") {
       run(async () => {
         const fd = new FormData(e.target);
         const update = Object.fromEntries(fd);
+        if (tab === "provider") update.backups = [...document.querySelectorAll("#backups fieldset")].map(row => ({ connection: row.querySelector("select").value, model: row.querySelector(".backup-model").value }));
         if (tab === "behavior") {
           update.starters = String(update.starters).split("\n").filter(Boolean);
           update.hints = fd.has("hints");
@@ -248,6 +249,29 @@ async function admin(m, tab = "overview") {
         await render();
       }, e.submitter);
     };
+  if ($("#backups")) {
+    const choices = state.connections.filter(x => !x.revoked);
+    function addBackup(entry = {}) {
+      const row = document.createElement("fieldset");
+      row.innerHTML = `<label>Backup connection<select required><option value="">Choose a connection</option>${choices.map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.provider)} · ${esc(x.masked)}</option>`).join("")}</select></label><label>Backup model<select required class="backup-model"></select></label><button type="button">Remove backup</button>`;
+      const select = row.querySelector("select");
+      select.value = entry.connection || "";
+      select.onchange = () => {
+        row.querySelector(".backup-model").innerHTML = (choices.find(x => x.id === select.value)?.models || []).map(model => `<option>${esc(model)}</option>`).join("");
+      };
+      select.onchange();
+      if (entry.model) row.querySelector(".backup-model").value = entry.model;
+      row.querySelector("button").onclick = () => row.remove();
+      $("#backups").append(row);
+    }
+    (c.backups || []).forEach(addBackup);
+    $("#add-backup").onclick = () => addBackup();
+    const provider = $("#api-provider");
+    provider.onchange = () => {
+      $("#connect").elements.replace.innerHTML = '<option value="">New connection</option>' + choices.filter(x => (x.provider || "openai") === provider.value).map(x => `<option value="${esc(x.id)}">Replace ${esc(x.name)}</option>`).join("");
+    };
+    provider.onchange();
+  }
   if ($("#connection"))
     $("#connection").onchange = (e) => {
       $("#model").innerHTML = (
@@ -655,7 +679,7 @@ function messageMarkup(r) {
 function privacy(m) {
   const c = cfg(m);
   shell(
-    `<article class="privacy"><a href="#/t/${m.id}">← Return to tutor</a><h1>Your questions & privacy</h1><h2>What is recorded</h2><p>Your question, tutor response, authenticated student ID, module and conversation identifiers, timestamp, request status, model and configuration versions, retrieved source excerpts, response time, returned token usage and feedback. We do not save hidden model reasoning or provider secrets in conversation records.</p><h2>Who can review it</h2><p>You can see your own history. The module owner and explicitly authorized collaborators can review module conversations to improve teaching. Platform administrators have explicit audited administrative privileges. Students cannot see one another’s conversations.</p><h2>Retention & deletion</h2><p>This module retains conversation records for ${c.retentionDays || 90} days after last activity; daily maintenance removes expired conversations. Hiding a conversation removes it from your visible history while retaining the instructor review record. You can export your questions or request permanent erasure below. Your instructor reviews erasure requests. Minimal audit metadata is retained for 365 days.</p><h2>What goes to the provider</h2><p>Voice recordings are sent to OpenAI for transcription; this app does not save audio. Original submitted text and English translations are retained with the conversation. Student documents are used for the attached question only; cited excerpts are retained and visible to authorized instructors, while the original file is not saved. OpenAI receives extracted text for embeddings, student questions for retrieval and generation, selected supporting excerpts, and tutor instructions. Direct student names and email addresses are not added to model prompts. Do not include unnecessary personal or sensitive data in your question. Responses use store:false; this is not a promise of zero provider retention. <a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener">OpenAI data controls</a> describe applicable abuse monitoring and account-specific controls.</p><h2>How answers work</h2><p>Answers are generated from selected active module excerpts; the full collection is not sent with every question. Sources are checked against retrieved evidence, but citation relevance and factual accuracy are not guaranteed. Generated practice examples, when enabled by your instructor, are labelled separately. No conversations are automatically used for training or fine-tuning and published instructions are never automatically rewritten.</p><div class="actions"><button id="export-private">Export my questions</button><button id="erasure">Request permanent erasure</button></div></article>`,
+    `<article class="privacy"><a href="#/t/${m.id}">← Return to tutor</a><h1>Your questions & privacy</h1><h2>What is recorded</h2><p>Your question, tutor response, authenticated student ID, module and conversation identifiers, timestamp, request status, model and configuration versions, retrieved source excerpts, response time, returned token usage and feedback. We do not save hidden model reasoning or provider secrets in conversation records.</p><h2>Who can review it</h2><p>You can see your own history. The module owner and explicitly authorized collaborators can review module conversations to improve teaching. Platform administrators have explicit audited administrative privileges. Students cannot see one another’s conversations.</p><h2>Retention & deletion</h2><p>This module retains conversation records for ${c.retentionDays || 90} days after last activity; daily maintenance removes expired conversations. Hiding a conversation removes it from your visible history while retaining the instructor review record. You can export your questions or request permanent erasure below. Your instructor reviews erasure requests. Minimal audit metadata is retained for 365 days.</p><h2>What goes to the provider</h2><p>Voice recordings are sent to OpenAI for transcription; this app does not save audio. Original submitted text and English translations are retained with the conversation. Student documents are used for the attached question only; cited excerpts are retained and visible to authorized instructors, while the original file is not saved. The configured primary and backup providers may receive student questions, supporting excerpts and tutor instructions. OpenAI connections may also receive extracted text for embeddings. Direct student names and email addresses are not added to model prompts. Do not include unnecessary personal or sensitive data in your question. Provider retention depends on the service and account settings. <a href="https://developers.openai.com/api/docs/guides/your-data" target="_blank" rel="noopener">OpenAI data controls</a> describe applicable abuse monitoring and account-specific controls.</p><h2>How answers work</h2><p>Answers are generated from selected active module excerpts; the full collection is not sent with every question. Sources are checked against retrieved evidence, but citation relevance and factual accuracy are not guaranteed. Generated practice examples, when enabled by your instructor, are labelled separately. No conversations are automatically used for training or fine-tuning and published instructions are never automatically rewritten.</p><div class="actions"><button id="export-private">Export my questions</button><button id="erasure">Request permanent erasure</button></div></article>`,
     m,
   );
   $("#export-private").onclick = () => run(() => downloadExport(m.id));
