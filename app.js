@@ -218,7 +218,7 @@ async function admin(m, tab = "overview") {
       ["Active students", a.students],
       ["Conversations", a.conversations],
       ["Questions", a.questions],
-      ["Insufficient evidence", a.insufficient],
+      ["Questions the materials couldn’t answer", a.insufficient],
       ["Errors / interruptions", a.errors],
       ["Mean latency (ms)", a.meanLatencyMs],
       ["Input tokens", a.inputTokens],
@@ -693,7 +693,7 @@ async function blobBase64(blob) {
   });
 }
 function messageMarkup(r) {
-  return `<div class="question" dir="auto">${esc(r.question)}${(r.attachments || []).map(f => `<small> · ${esc(f.filename)} (student upload)</small>`).join("")}</div>${englishMarkup(r)}<article class="answer" dir="auto"><p>${esc(r.answer || r.error?.message || (r.status === "pending" ? "Preparing your answer…" : "No answer was produced."))}</p>${r.example ? `<div class="example"><strong>Generated practice example</strong><p>${esc(r.example)}</p></div>` : ""}<div>${(r.sources || []).map((s) => `<button class="source-chip" data-source="${esc(s.id)}" data-request="${r.id}">▣ ${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}</div><small>${esc(r.status)}${r.insufficient ? " · Insufficient evidence" : ""}</small><div class="feedback"><button data-feedback="helpful" data-request="${r.id}" aria-label="Helpful response">♧ Helpful</button><button data-feedback="unhelpful" data-request="${r.id}">Not helpful</button><button data-feedback="issue" data-request="${r.id}">⚑ Report an issue</button></div></article>`;
+  return `<div class="question" dir="auto">${esc(r.question)}${(r.attachments || []).map(f => `<small> · ${esc(f.filename)} (student upload)</small>`).join("")}</div>${englishMarkup(r)}<article class="answer" dir="auto"><p>${esc(r.answer || r.error?.message || (r.status === "pending" ? "Preparing your answer…" : "No answer was produced."))}</p>${r.example ? `<div class="example"><strong>Generated practice example</strong><p>${esc(r.example)}</p></div>` : ""}<div>${(r.sources || []).map((s) => `<button class="source-chip" data-source="${esc(s.id)}" data-request="${r.id}">▣ ${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}</div><small>${esc(r.status)}</small><div class="feedback"><button data-feedback="helpful" data-request="${r.id}" aria-label="Helpful response">♧ Helpful</button><button data-feedback="unhelpful" data-request="${r.id}">Not helpful</button><button data-feedback="issue" data-request="${r.id}">⚑ Report an issue</button></div></article>`;
 }
 function privacy(m) {
   const c = cfg(m);
