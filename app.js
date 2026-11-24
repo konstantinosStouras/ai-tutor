@@ -20,7 +20,7 @@ const state = {
   pending: null,
 };
 let auth, authSDK, call;
-let authEpoch=0;
+let authEpoch = 0;
 function notify(message) {
   $("#notice").textContent = message;
   clearTimeout(notify.timer);
@@ -28,9 +28,10 @@ function notify(message) {
 }
 async function api(action, data = {}) {
   if (!call) throw Error("Firebase is not configured yet.");
-  const epoch=authEpoch;
-  const response=await call({action,data});
-  if(epoch!==authEpoch)throw Error('The signed-in account changed. Please try again.');
+  const epoch = authEpoch;
+  const response = await call({ action, data });
+  if (epoch !== authEpoch)
+    throw Error("The signed-in account changed. Please try again.");
   return response.data;
 }
 function login(error = "") {
@@ -89,12 +90,32 @@ function dashboard() {
       `<div class="empty">${state.user.instructor ? "Create your first module tutor to get started." : "No modules are available yet. Ask your instructor to enroll the Google account you used to sign in."}</div>`
     }</div>${state.user.admin ? `<section class="card" style="margin-top:24px"><h2>Platform administration</h2><p>Role grants are recorded in the audit log.</p><form id="roles" class="form"><label>Google account email<input name="email" type="email" required></label><label>Role<select name="role"><option value="instructor">Instructor</option><option value="student">Student (revoke instructor role)</option><option value="admin">Platform administrator</option></select></label><button class="primary">Save role grant</button></form></section>` : ""}`,
   );
-  document.querySelectorAll('.cards .card').forEach((card,index)=>{
-    const m=state.modules[index];if(!m.manage)return;
-    card.querySelector('.pill').textContent=m.status||(m.paused?'Paused':m.published?'Published':'Draft');
-    const meta=document.createElement('p');meta.className='muted';meta.textContent=`${m.studentCount||0} enrolled students · OpenAI`;card.insertBefore(meta,card.querySelector('.actions'));
+  document.querySelectorAll(".cards .card").forEach((card, index) => {
+    const m = state.modules[index];
+    if (!m.manage) return;
+    card.querySelector(".pill").textContent =
+      m.status || (m.paused ? "Paused" : m.published ? "Published" : "Draft");
+    const meta = document.createElement("p");
+    meta.className = "muted";
+    meta.textContent = `${m.studentCount || 0} enrolled students · OpenAI`;
+    card.insertBefore(meta, card.querySelector(".actions"));
   });
-  if(state.user.admin){const b=document.createElement('button');b.textContent='View administrative audit';$('#roles').after(b);b.onclick=()=>run(async()=>{const rows=await api('audit');$('#source-content').innerHTML=rows.map(r=>`<p>${esc(new Date(r.at).toLocaleString('en-GB'))} · ${esc(r.action)} · ${esc(r.actor)} · ${esc(r.target)}</p>`).join('');$('#source').showModal();});}
+  if (state.user.admin) {
+    const b = document.createElement("button");
+    b.textContent = "View administrative audit";
+    $("#roles").after(b);
+    b.onclick = () =>
+      run(async () => {
+        const rows = await api("audit");
+        $("#source-content").innerHTML = rows
+          .map(
+            (r) =>
+              `<p>${esc(new Date(r.at).toLocaleString("en-GB"))} · ${esc(r.action)} · ${esc(r.actor)} · ${esc(r.target)}</p>`,
+          )
+          .join("");
+        $("#source").showModal();
+      });
+  }
   if ($("#roles"))
     $("#roles").onsubmit = (e) => {
       e.preventDefault();
@@ -193,8 +214,12 @@ async function admin(m, tab = "overview") {
         .map(([day, count]) => `<tr><td>${day}</td><td>${count}</td></tr>`)
         .join("") || "<tr><td>No activity yet.</td></tr>"
     }</tbody></table><h3>Feedback & reported issues</h3>${a.feedback.map((f) => `<article class="card"><strong>${esc(f.rating)}</strong><p>${esc(f.question)}</p><p>${esc(f.issue)}</p></article>`).join("") || "<p>No feedback yet.</p>"}`;
-    if(a.todayQuestions>=a.dailyQuota*0.8)content=`<div class="warning">Usage warning: ${a.todayQuestions} of ${a.dailyQuota} daily questions used. The server will enforce the daily request quota.</div>`+content;
-    content+='<section class="card"><h3>Improve your tutor</h3><p>Explicitly send up to 80 module questions without student identifiers to your provider for draft improvement suggestions. This does not train a model or change published instructions.</p><button data-action="suggestImprovements">Suggest tutor improvements</button><div id="improvement-suggestions"></div></section>';
+    if (a.todayQuestions >= a.dailyQuota * 0.8)
+      content =
+        `<div class="warning">Usage warning: ${a.todayQuestions} of ${a.dailyQuota} daily questions used. The server will enforce the daily request quota.</div>` +
+        content;
+    content +=
+      '<section class="card"><h3>Improve your tutor</h3><p>Explicitly send up to 80 module questions without student identifiers to your provider for draft improvement suggestions. This does not train a model or change published instructions.</p><button data-action="suggestImprovements">Suggest tutor improvements</button><div id="improvement-suggestions"></div></section>';
   }
   shell(
     `<header class="topline"><div><p class="muted">${esc(c.code)} · INSTRUCTOR ADMINISTRATION</p><h1>${esc(c.title)}</h1><p>${esc(c.name)} · <span class="pill">${m.paused ? "Paused" : m.published ? "Published" : "Draft"}</span></p></div><a class="button" href="#/preview/${m.id}">Preview tutor</a></header><nav class="tabs">${tabs.map(([key, label]) => `<a href="#/admin/${m.id}/${key}" class="${key === tab ? "active" : ""}">${label}</a>`).join("")}</nav>${content}`,
@@ -290,7 +315,11 @@ function currentModule() {
   return state.modules.find((m) => m.id === location.hash.split("/")[2]);
 }
 const actions = {
-  async suggestImprovements(){const r=await api('suggestImprovements',{module:currentModule().id});$('#improvement-suggestions').innerHTML=`<div class="record">${esc(r.summary)}</div><p>${esc(r.notice)}</p>`;},
+  async suggestImprovements() {
+    const r = await api("suggestImprovements", { module: currentModule().id });
+    $("#improvement-suggestions").innerHTML =
+      `<div class="record">${esc(r.summary)}</div><p>${esc(r.notice)}</p>`;
+  },
   async removeMaterial(b) {
     notify(
       (
@@ -584,10 +613,13 @@ async function render() {
 window.addEventListener("hashchange", () => run(render));
 async function init() {
   const c = window.TUTOR_CONFIG;
-  if(c?.backendReady===false)return login('Platform setup is in progress. Google sign-in will be available once backend deployment is complete.');
+  if (c?.backendReady === false)
+    return login(
+      "Platform setup is in progress. Google sign-in will be available once backend deployment is complete.",
+    );
   if (!c?.firebase?.apiKey || !c.firebase.projectId)
     return login("Google sign-in is awaiting platform configuration.");
-  const base = "https://www.gstatic.com/firebasejs/11.10.0/";
+  const base = "https://www.gstatic.com/firebasejs/12.19.0/";
   const [appSDK, authModule, functionsSDK, appCheckSDK] = await Promise.all(
     [
       "firebase-app.js",
@@ -616,7 +648,13 @@ async function init() {
   authSDK.onAuthStateChanged(auth, (user) =>
     run(async () => {
       authEpoch++;
-      state.chatModule=null;state.conversation=crypto.randomUUID();state.conversations=[];state.messages=[];state.sources=[];state.acknowledged=false;state.pending=null;
+      state.chatModule = null;
+      state.conversation = crypto.randomUUID();
+      state.conversations = [];
+      state.messages = [];
+      state.sources = [];
+      state.acknowledged = false;
+      state.pending = null;
       if (!user) {
         state.user = null;
         state.modules = [];
