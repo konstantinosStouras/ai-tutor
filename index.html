@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Sign in to your module tutor." />
+    <title>Module Tutor · Stouras</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./config.js"></script>
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <div id="app">
+      <main class="login">
+        <section class="login-card">
+          <div class="crest" aria-hidden="true">♧</div>
+          <h1>Your module. Your tutor.</h1>
+          <p>
+            Sign in to access your course tutor<br />and saved conversations.
+          </p>
+          <button disabled>Loading Google sign-in…</button>
+        </section>
+      </main>
+    </div>
+    <dialog id="source">
+      <button id="close-source" aria-label="Close source">×</button>
+      <h2>Source detail</h2>
+      <div id="source-content"></div>
+    </dialog>
+  </body>
+</html>

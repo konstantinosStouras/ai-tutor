@@ -1,0 +1,27 @@
+# Module Tutor frontend
+
+Static HTML, CSS and JavaScript for the existing GitHub Pages site. Publish this
+repository as the `ai-tutor` submodule in `konstantinosStouras.github.io`; do not
+enable a second Pages site or change the website CNAME/Jekyll configuration.
+
+The public entry shows only Google sign-in. Module data, dashboards and
+conversation history load only after authentication and server authorization.
+The student layout follows the supplied green, cream and gold interface.
+
+Routes work without web-server rewrites:
+
+- `/ai-tutor/` — Google sign-in, then the authorized dashboard.
+- `/ai-tutor/#/create` — instructor setup.
+- `/ai-tutor/#/admin/MODULE_ID` — separate instructor administration.
+- `/ai-tutor/#/t/MODULE_ID` — stable enrolled-student tutor page.
+- `/ai-tutor/#/preview/MODULE_ID` — authorized instructor draft preview.
+- `/ai-tutor/#/privacy/MODULE_ID` — recording, retention, export and erasure details.
+
+`config.js` contains public Firebase identifiers and an App Check public site key.
+Never place an AI provider key or service account credential in frontend files.
+The backend is maintained separately in `ai-tutor-backend`.
+
+For local development serve this folder over HTTP, authorize localhost in Firebase
+Authentication and App Check, and use the backend emulator instructions. No mock
+provider or demo account is included in the production frontend. Browser tests
+intercept Firebase modules explicitly; their test responses are not live AI.
