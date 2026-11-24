@@ -15,7 +15,6 @@ const state = {
   conversations: [],
   messages: [],
   conversation: crypto.randomUUID(),
-  sources: [],
   pending: null,
 };
 let auth, authSDK, call;
@@ -62,12 +61,75 @@ async function refresh() {
   Object.assign(state, s);
 }
 const cfg = (m) => m?.published || m?.draft || {};
+let conversationWidth = 245;
+let expandedWidth = 245;
+function bindConversationSidebar() {
+  const shell = $(".chat-shell");
+  const grip = $("#conversation-divider");
+  const restore = $("#restore-history");
+  const desktop = matchMedia("(min-width: 701px)");
+  const limit = () => Math.min(360, Math.floor(shell.clientWidth / 3));
+  function apply(width) {
+    conversationWidth = Math.max(0, Math.min(width, limit()));
+    shell.style.setProperty("--history-width", conversationWidth + "px");
+    shell.classList.toggle("history-closed", conversationWidth === 0);
+    grip.setAttribute("aria-valuenow", String(conversationWidth));
+    grip.setAttribute("aria-valuemax", String(limit()));
+  }
+  function collapse() {
+    expandedWidth = conversationWidth || expandedWidth;
+    apply(0);
+    restore.focus();
+  }
+  restore.onclick = () => {
+    apply(expandedWidth);
+    grip.focus();
+  };
+  $("#collapse-history").onclick = collapse;
+  grip.onpointerdown = event => {
+    if (event.button !== 0 || !event.isPrimary) return;
+    if (conversationWidth) expandedWidth = conversationWidth;
+    grip.setPointerCapture(event.pointerId);
+    shell.classList.add("resizing");
+  };
+  grip.onpointermove = event => {
+    if (!grip.hasPointerCapture(event.pointerId)) return;
+    const width = Math.round(event.clientX - shell.getBoundingClientRect().left);
+    apply(width < 90 ? 0 : Math.max(160, width));
+  };
+  grip.onlostpointercapture = () => {
+    shell.classList.remove("resizing");
+    if (!conversationWidth) restore.focus();
+  };
+  grip.onkeydown = event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End", "Enter"].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === "Home" || event.key === "Enter" || (event.key === "ArrowLeft" && conversationWidth <= 160)) return collapse();
+    apply(event.key === "End" ? limit() : Math.max(160, conversationWidth + (event.key === "ArrowLeft" ? -20 : 20)));
+  };
+  const sync = () => {
+    if (!shell.isConnected) return;
+    if (desktop.matches) apply(conversationWidth);
+  };
+  sync();
+  window.addEventListener("resize", sync, {signal: sidebarEvents.signal});
+}
+let sidebarEvents = new AbortController();
+function answerSources(answer) {
+  if (!answer?.sources?.length) return "";
+  return `<aside class="sources" aria-label="Sources for this answer"><h2>Sources for this answer</h2>${answer.sources.map(s =>
+    `<button class="source-card" data-source="${esc(s.id)}" data-request="${esc(answer.id)}"><strong>▤ ${esc(s.filename)} · ${esc(s.locator)}</strong>${s.text ? `<blockquote>${esc(s.text.slice(0, 240))}${s.text.length > 240 ? "…" : ""}</blockquote>` : ""}</button>`
+  ).join("")}</aside>`;
+}
 function shell(content, selected = null, student = false) {
+  sidebarEvents.abort();
+  sidebarEvents = new AbortController();
   const visible = student
     ? state.modules.filter((m) => m.published)
     : state.modules;
   $("#app").innerHTML =
-    `<div class="shell"><aside class="sidebar"><a href="#/" class="brand">Module Tutor</a>${visible.length ? `<label class="hidden" for="module-switch">Module</label><select id="module-switch"><option value="">Choose a module</option>${visible.map((m) => `<option value="${esc(m.id)}" ${m.id === selected?.id ? "selected" : ""}>${esc(cfg(m).title)}</option>`).join("")}</select>` : ""}${student ? '<button class="gold" id="new-conversation">＋ New conversation</button>' : ""}<nav><a href="#/">Dashboard</a>${state.user.instructor ? ' · <a href="#/create">Create tutor</a>' : ""}</nav>${student ? `<div class="history"><h3>Recent conversations</h3>${state.conversations.map((c) => `<button data-conversation="${esc(c.id)}" class="${c.id === state.conversation ? "active" : ""}">◯ ${esc(c.title)}</button>`).join("") || "<small>No conversations yet.</small>"}</div>` : ""}<div class="account"><div><strong>${esc(state.user.name)}</strong><br>${state.user.instructor ? "Instructor account" : "Student account"}</div><button id="signout">Sign out</button></div></aside><main class="main">${content}</main></div>`;
+    `<div class="shell${student ? " chat-shell" : ""}"><aside class="sidebar" id="module-navigation">${student ? '<button id="collapse-history" class="history-control" aria-label="Collapse conversations" title="Collapse conversations">‹</button>' : ""}<a href="#/" class="brand">Module Tutor</a>${visible.length ? `<label class="hidden" for="module-switch">Module</label><select id="module-switch"><option value="">Choose a module</option>${visible.map((m) => `<option value="${esc(m.id)}" ${m.id === selected?.id ? "selected" : ""}>${esc(cfg(m).title)}</option>`).join("")}</select>` : ""}${student ? '<button class="gold" id="new-conversation">＋ New conversation</button>' : ""}<nav><a href="#/">Dashboard</a>${state.user.instructor ? ' · <a href="#/create">Create tutor</a>' : ""}</nav>${student ? `<div class="history"><h3>Recent conversations</h3>${state.conversations.map((c) => `<button data-conversation="${esc(c.id)}" class="${c.id === state.conversation ? "active" : ""}">◯ ${esc(c.title)}</button>`).join("") || "<small>No conversations yet.</small>"}</div>` : ""}<div class="account"><div><strong>${esc(state.user.name)}</strong><br>${state.user.instructor ? "Instructor account" : "Student account"}</div><button id="signout">Sign out</button></div></aside>${student ? '<div id="conversation-divider" role="separator" tabindex="0" aria-label="Conversation sidebar width" aria-orientation="vertical" aria-controls="module-navigation" aria-valuemin="0"></div>' : ""}<main class="main">${student ? '<button id="restore-history" class="history-control" aria-controls="module-navigation">Show conversations</button>' : ""}${content}</main></div>`;
+  if (student) bindConversationSidebar();
   $("#signout").onclick = () => run(() => authSDK.signOut(auth));
   const select = $("#module-switch");
   if (select)
@@ -496,14 +558,13 @@ async function chat(m, preview = false) {
   if (state.chatModule !== m.id || state.preview !== preview) {
     state.conversation = crypto.randomUUID();
     state.messages = [];
-    state.sources = [];
     state.chatModule = m.id;
     state.preview = preview;
     state.pending = null;
   }
   state.conversations = await api("conversations", { module: m.id });
   shell(
-    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section><aside class="sources"><h2>Sources for this answer</h2>${state.sources.map((s) => `<button class="source-card" data-source="${esc(s.id)}" data-request="${esc(state.sourceRequest)}"><strong>▤ ${esc(s.filename)} · ${esc(s.locator)}</strong><blockquote>${esc(s.text.slice(0, 240))}…</blockquote></button>`).join("") || '<p class="muted">Supporting excerpts will appear here when you ask a question.</p>'}</aside></div>`,
+    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
     m,
     true,
   );
@@ -563,7 +624,6 @@ async function chat(m, preview = false) {
   $("#new-conversation").onclick = () => {
     state.conversation = crypto.randomUUID();
     state.messages = [];
-    state.sources = [];
     state.pending = null;
     run(() => chat(m, preview));
   };
@@ -577,7 +637,6 @@ async function chat(m, preview = false) {
             module: m.id,
             conversation: state.conversation,
           });
-          state.sources = [];
           await chat(m, preview);
         })),
   );
@@ -610,12 +669,10 @@ async function chat(m, preview = false) {
           attachments,
           preview,
         });
-        const saved = { ...r, question };
+        const saved = { ...r, id: request, question };
         state.messages = state.messages.filter((x) => x.id !== request);
         state.messages.push(saved);
         state.pending = null;
-        state.sources = r.sources || [];
-        state.sourceRequest = request;
         await chat(m, preview);
       } catch (error) {
         $("#thinking")?.remove();
@@ -674,7 +731,6 @@ async function chat(m, preview = false) {
       );
       state.conversation = crypto.randomUUID();
       state.messages = [];
-      state.sources = [];
       await chat(m, preview);
     });
   if (state.pending) $("#question").value = state.pending.question;
@@ -799,7 +855,6 @@ async function init() {
       state.conversation = crypto.randomUUID();
       state.conversations = [];
       state.messages = [];
-      state.sources = [];
       state.pending = null;
       if (!user) {
         state.user = null;
