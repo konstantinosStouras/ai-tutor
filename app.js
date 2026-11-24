@@ -567,10 +567,10 @@ function composer(paused) {
     <div class="composer-tools">
       <button id="add-file" type="button" aria-expanded="false" aria-controls="file-options" aria-label="Add attachment" title="Add attachment" ${disabled}>+</button>
       <div id="file-options" hidden>
-        <button type="button" data-picker="student-file">Attach a document <small>Up to 4 MB</small></button>
+        <button type="button" data-picker="student-file">Attach a document or screenshot <small>Up to 4 MB</small></button>
         <button type="button" data-picker="voice-file">Transcribe a recording <small>Up to 2 MB</small></button>
       </div>
-      <input id="student-file" hidden type="file" accept=".pdf,.docx,.pptx,.txt,.md">
+      <input id="student-file" hidden type="file" accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg">
       <input id="voice-file" hidden type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg">
       <button id="remove-file" type="button" hidden title="Remove attachment"></button>
       <button id="dictate" type="button" aria-label="Speak your question" title="Speak your question" aria-pressed="false" ${disabled}>
@@ -716,7 +716,7 @@ async function chat(m, preview = false) {
       let attachments = state.pending?.attachments || [];
       const file = $("#student-file").files[0];
       if (!state.pending && file) {
-        if (file.size > 4 * 1024 * 1024) throw Error("Document exceeds 4 MB.");
+        if (file.size > 4 * 1024 * 1024) throw Error("Attachment exceeds 4 MB.");
         attachments = [{ filename: file.name, data: await blobBase64(file) }];
       }
       const replaces = state.pending?.replaces || state.editing || null;
