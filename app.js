@@ -16,7 +16,6 @@ const state = {
   messages: [],
   conversation: crypto.randomUUID(),
   sources: [],
-  acknowledged: false,
   pending: null,
 };
 let auth, authSDK, call;
@@ -501,11 +500,10 @@ async function chat(m, preview = false) {
     state.chatModule = m.id;
     state.preview = preview;
     state.pending = null;
-    state.acknowledged = false;
   }
   state.conversations = await api("conversations", { module: m.id });
   shell(
-    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="disclosure"><label class="check"><input id="ack" type="checkbox" ${state.acknowledged ? "checked" : ""}> <span>Your questions and tutor responses are saved. Your instructor can review them to improve this module’s tutor. <a href="#/privacy/${m.id}">Privacy details</a></span></label></div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button></div></section><aside class="sources"><h2>Sources for this answer</h2>${state.sources.map((s) => `<button class="source-card" data-source="${esc(s.id)}" data-request="${esc(state.sourceRequest)}"><strong>▤ ${esc(s.filename)} · ${esc(s.locator)}</strong><blockquote>${esc(s.text.slice(0, 240))}…</blockquote></button>`).join("") || '<p class="muted">Supporting excerpts will appear here when you ask a question.</p>'}</aside></div>`,
+    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section><aside class="sources"><h2>Sources for this answer</h2>${state.sources.map((s) => `<button class="source-card" data-source="${esc(s.id)}" data-request="${esc(state.sourceRequest)}"><strong>▤ ${esc(s.filename)} · ${esc(s.locator)}</strong><blockquote>${esc(s.text.slice(0, 240))}…</blockquote></button>`).join("") || '<p class="muted">Supporting excerpts will appear here when you ask a question.</p>'}</aside></div>`,
     m,
     true,
   );
@@ -519,13 +517,12 @@ async function chat(m, preview = false) {
   $("#voice-file").onchange = e => run(async () => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!state.acknowledged) throw Error("Acknowledge the recording notice first. Audio is sent to OpenAI and is not saved by this app.");
     if (file.size > 2 * 1024 * 1024) throw Error("Recording exceeds 2 MB.");
     const box = $("#question"), status = $("#voice-status");
     status.textContent = "Transcribing recording…";
     const mime = file.type.split(";")[0].replace("audio/x-wav", "audio/wav");
     try {
-      const result = await api("transcribe", { module: m.id, preview, acknowledged: true, mime, audio: await blobBase64(file) });
+      const result = await api("transcribe", { module: m.id, preview, mime, audio: await blobBase64(file) });
       if (!box.isConnected) return;
       box.value = (box.value + " " + result.text).trim(); box.focus();
       status.textContent = "Review or edit your transcript, then send. English translations appear with the reply.";
@@ -535,7 +532,6 @@ async function chat(m, preview = false) {
   let recording = null;
   $("#dictate").onclick = () => run(async () => {
     if (recording) { recording.stop(); return; }
-    if (!state.acknowledged) throw Error("Acknowledge the recording notice first. Audio is sent to OpenAI for transcription and is not saved by this app.");
     if (m.paused) throw Error("Your instructor has paused this tutor.");
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw Error("Voice input is unavailable in this browser. Please type your question.");
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -554,7 +550,7 @@ async function chat(m, preview = false) {
       run(async () => {
         try {
           const audio = await blobBase64(new Blob(parts, { type: mime }));
-          const result = await api("transcribe", { module: m.id, preview, acknowledged: true, mime, audio });
+          const result = await api("transcribe", { module: m.id, preview, mime, audio });
           if (!box.isConnected) return;
           box.value = (box.value + " " + result.text).trim(); box.focus();
           status.textContent = "Review or edit your transcript, then send. English translations appear with the reply.";
@@ -564,7 +560,6 @@ async function chat(m, preview = false) {
     recorder.start(1000); $("#dictate").textContent = "Stop recording";
     $("#voice-status").textContent = "Listening… Stop when finished (maximum 60 seconds). Audio will be sent to OpenAI. Your instructor can review the submitted text.";
   });
-  $("#ack").onchange = (e) => (state.acknowledged = e.target.checked);
   $("#new-conversation").onclick = () => {
     state.conversation = crypto.randomUUID();
     state.messages = [];
@@ -589,10 +584,6 @@ async function chat(m, preview = false) {
   $("#ask").onsubmit = (e) => {
     e.preventDefault();
     run(async () => {
-      if (!state.acknowledged)
-        throw Error(
-          "Please acknowledge the recording notice before your first question.",
-        );
       const question = $("#question").value.trim();
       if (state.pending && state.pending.question !== question)
         throw Error(
@@ -617,7 +608,6 @@ async function chat(m, preview = false) {
           request,
           question,
           attachments,
-          acknowledged: true,
           preview,
         });
         const saved = { ...r, question };
@@ -810,7 +800,6 @@ async function init() {
       state.conversations = [];
       state.messages = [];
       state.sources = [];
-      state.acknowledged = false;
       state.pending = null;
       if (!user) {
         state.user = null;
