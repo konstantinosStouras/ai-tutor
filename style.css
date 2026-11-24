@@ -327,6 +327,27 @@ textarea:focus-visible {
 .form {
   max-width: 760px;
 }
+.conversation-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 20px;
+}
+.conversation-title label {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+}
+.conversation-title button {
+  margin: 0;
+}
+.question-actions {
+  margin-top: 12px;
+}
+.question-actions button {
+  font-size: 13px;
+}
 form > button {
   margin-top: 8px;
 }
@@ -632,6 +653,9 @@ pre {
   }
   .chat-layout {
     min-height: 0;
+  }
+  .composer:has(button[aria-label="Save & regenerate"]) {
+    flex-wrap: wrap;
   }
   .login-card {
     padding: 34px 24px;

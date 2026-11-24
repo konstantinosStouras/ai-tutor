@@ -506,7 +506,7 @@ const actions = {
     $(`#review-${conversation}`).innerHTML = rs
       .map(
         (r) =>
-          `<div class="record"><small>${new Date(r.at).toLocaleString("en-GB")} · ${esc(r.status)} · ${esc(r.model)} · configuration ${esc(r.configVersion)} · index ${esc(r.materialVersion)}</small><h3>Student question</h3><p>${esc(r.question)}</p>${englishMarkup(r)}<h3>Tutor response</h3><p>${esc(r.answer || r.error?.message || "Pending")}</p>${(r.sources || []).map((s) => `<button class="source-chip" data-review-source="${esc(s.id)}" data-request="${r.id}" data-conversation="${conversation}">${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}<p><small>${esc(r.feedback?.rating || "No feedback")} ${esc(r.feedback?.issue || "")}</small></p></div>`,
+          `<div class="record"><small>${new Date(r.at).toLocaleString("en-GB")} · ${esc(r.status)} · ${esc(r.model)} · configuration ${esc(r.configVersion)} · index ${esc(r.materialVersion)}</small>${r.studentRemoved ? "<p class=muted>Removed or superseded in the student’s chat; retained for instructor review.</p>" : ""}<h3>Student question</h3><p>${esc(r.question)}</p>${englishMarkup(r)}<h3>Tutor response</h3><p>${esc(r.answer || r.error?.message || "Pending")}</p>${(r.sources || []).map((s) => `<button class="source-chip" data-review-source="${esc(s.id)}" data-request="${r.id}" data-conversation="${conversation}">${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}<p><small>${esc(r.feedback?.rating || "No feedback")} ${esc(r.feedback?.issue || "")}</small></p></div>`,
       )
       .join("");
     document
@@ -565,10 +565,12 @@ async function chat(m, preview = false) {
     state.chatModule = m.id;
     state.preview = preview;
     state.pending = null;
+    state.editing = null;
   }
   state.conversations = await api("conversations", { module: m.id });
+  const currentConversation = state.conversations.find(c => c.id === state.conversation);
   shell(
-    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p><form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="Send question" ${m.paused ? "disabled" : ""}>➤</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide">Hide this conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
+    `<div class="chat-layout"><section class="chat"><header class="topline"><div><h1>${esc(config.title)}</h1><p class="muted">Your course tutor · Instructor: ${esc(m.instructor)}</p></div><span class="pill">▣ Based on module materials</span></header>${preview ? `<div class="warning">Instructor draft preview. Questions and responses are recorded as preview activity. <a href="#/admin/${m.id}/publish">Return to publication</a></div>` : ""}${m.paused ? '<div class="warning">Your instructor has paused this tutor.</div>' : ""}${currentConversation ? `<form id="conversation-title" class="conversation-title"><label>Conversation title<input name="title" maxlength="90" required value="${esc(currentConversation.title)}"></label><button type="submit">Save title</button></form>` : ""}<div class="starters"><button data-starter="Explain a concept">♧ Explain a concept</button><button data-starter="Give me a hint">♧ Give me a hint</button><button data-starter="Quiz me">☷ Quiz me</button></div><div id="messages" class="messages" aria-live="polite">${state.messages.length ? "" : `<div class="empty"><h2>${esc(config.name)}</h2><p>${esc(config.welcome)}</p>${config.starters.map((q) => `<button data-starter="${esc(q)}">${esc(q)}</button>`).join(" ")}</div>`}${state.messages.map((r) => messageMarkup(r)).join("")}</div><div class="actions"><button id="dictate" type="button">🎙 Speak your question</button><label>Or transcribe a recording<input id="voice-file" type="file" accept="audio/webm,audio/mp4,audio/ogg,audio/wav,audio/mpeg"></label><label>Attach a document<input id="student-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md"></label></div><p id="voice-status" role="status">Speak or type in your language. The tutor replies in that language, with English translations. Attach one document up to 4 MB for this question.</p>${state.editing ? `<div class="warning" role="status">Editing your question. Save & regenerate replaces its answer and removes later exchanges from your chat. Instructor review records remain. Reattach any document needed for the new answer.<div class="actions"><button id="cancel-edit" type="button">Cancel edit</button></div></div>` : ""}<form id="ask" class="composer"><label class="hidden" for="question">Ask about your module</label><textarea id="question" maxlength="4000" required placeholder="Ask about your module…" ${m.paused ? "disabled" : ""}></textarea><button class="primary" aria-label="${state.editing ? "Save & regenerate" : "Send question"}" ${m.paused ? "disabled" : ""}>${state.editing ? "Save & regenerate" : "➤"}</button></form><p class="ai-note">AI can make mistakes. Check the cited sources.</p><div class="actions"><button id="export-own">Export my questions</button><button id="hide" ${currentConversation ? "" : "disabled"}>Delete conversation</button><a href="#/privacy/${m.id}">Privacy details</a></div></section>${answerSources(state.messages.at(-1))}</div>`,
     m,
     true,
   );
@@ -626,6 +628,7 @@ async function chat(m, preview = false) {
     $("#voice-status").textContent = "Listening… Stop when finished (maximum 60 seconds). Audio will be sent to OpenAI. Your instructor can review the submitted text.";
   });
   $("#new-conversation").onclick = () => {
+    state.editing = null;
     state.conversation = crypto.randomUUID();
     state.messages = [];
     state.pending = null;
@@ -637,6 +640,7 @@ async function chat(m, preview = false) {
         run(async () => {
           state.conversation = b.dataset.conversation;
           state.pending = null;
+          state.editing = null;
           state.messages = await api("messages", {
             module: m.id,
             conversation: state.conversation,
@@ -659,7 +663,8 @@ async function chat(m, preview = false) {
         if (file.size > 4 * 1024 * 1024) throw Error("Document exceeds 4 MB.");
         attachments = [{ filename: file.name, data: await blobBase64(file) }];
       }
-      state.pending = { request, question, attachments };
+      const replaces = state.pending?.replaces || state.editing || null;
+      state.pending = { request, question, attachments, replaces };
       $("#messages").insertAdjacentHTML(
         "beforeend",
         '<p id="thinking" role="status">Finding module evidence and preparing an answer…</p>',
@@ -671,13 +676,14 @@ async function chat(m, preview = false) {
           request,
           question,
           attachments,
+          ...(replaces ? { replaces } : {}),
           preview,
         });
-        const saved = { ...r, id: request, question };
-        state.messages = state.messages.filter((x) => x.id !== request);
-        state.messages.push(saved);
+        state.messages = await api("messages", { module: m.id, conversation: state.conversation });
+        state.editing = null;
         state.pending = null;
         await chat(m, preview);
+        if (r.error) notify(r.error.message + (replaces ? " Your original exchange is unchanged." : ""));
       } catch (error) {
         $("#thinking")?.remove();
         throw Error(
@@ -722,12 +728,37 @@ async function chat(m, preview = false) {
           notify("Feedback recorded. Thank you.");
         }, b)),
   );
+  const titleForm = $("#conversation-title");
+  if (titleForm) titleForm.onsubmit = e => {
+    e.preventDefault();
+    run(async () => {
+      await api("renameConversation", { module: m.id, conversation: state.conversation, title: titleForm.elements.title.value.trim() });
+      await chat(m, preview);
+      notify("Conversation title saved.");
+    }, e.submitter);
+  };
+  document.querySelectorAll("[data-edit-request]").forEach(b => b.onclick = () => run(async () => {
+    if (state.pending) throw Error("Retry the pending question before editing another exchange.");
+    state.editing = b.dataset.editRequest;
+    await chat(m, preview);
+    $("#question").focus();
+  }));
+  document.querySelectorAll("[data-delete-request]").forEach(b => b.onclick = () => run(async () => {
+    if (!confirm("Delete this question and its answer from your chat? Instructor review records remain under the module retention policy.")) return;
+    const result = await api("deleteExchange", { module: m.id, conversation: state.conversation, request: b.dataset.deleteRequest });
+    state.messages = await api("messages", { module: m.id, conversation: state.conversation });
+    state.editing = null;
+    await chat(m, preview);
+    notify(result.notice);
+  }, b));
+  if ($("#cancel-edit")) $("#cancel-edit").onclick = () => { state.editing = null; run(() => chat(m, preview)); };
   $("#export-own").onclick = () => run(() => downloadExport(m.id));
   $("#hide").onclick = () =>
     run(async () => {
+      if (!confirm("Delete this conversation from your chat history? Instructor review records remain until retention expires or an erasure request is approved.")) return;
       notify(
         (
-          await api("hideConversation", {
+          await api("deleteConversation", {
             module: m.id,
             conversation: state.conversation,
           })
@@ -735,9 +766,11 @@ async function chat(m, preview = false) {
       );
       state.conversation = crypto.randomUUID();
       state.messages = [];
+      state.editing = null;
       await chat(m, preview);
     });
   if (state.pending) $("#question").value = state.pending.question;
+  else if (state.editing) $("#question").value = state.messages.find(r => r.id === state.editing)?.question || "";
   $("#messages").scrollTop = $("#messages").scrollHeight;
 }
 function englishMarkup(r) {
@@ -753,7 +786,7 @@ async function blobBase64(blob) {
   });
 }
 function messageMarkup(r) {
-  return `<div class="question" dir="auto">${esc(r.question)}${(r.attachments || []).map(f => `<small> · ${esc(f.filename)} (student upload)</small>`).join("")}</div>${englishMarkup(r)}<article class="answer" dir="auto"><p>${esc(r.answer || r.error?.message || (r.status === "pending" ? "Preparing your answer…" : "No answer was produced."))}</p>${r.example ? `<div class="example"><strong>Generated practice example</strong><p>${esc(r.example)}</p></div>` : ""}<div>${(r.sources || []).map((s) => `<button class="source-chip" data-source="${esc(s.id)}" data-request="${r.id}">▣ ${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}</div><small>${esc(r.status)}</small><div class="feedback"><button data-feedback="helpful" data-request="${r.id}" aria-label="Helpful response">♧ Helpful</button><button data-feedback="unhelpful" data-request="${r.id}">Not helpful</button><button data-feedback="issue" data-request="${r.id}">⚑ Report an issue</button></div></article>`;
+  return `<div class="question" dir="auto">${esc(r.question)}<div class="actions question-actions"><button type="button" data-edit-request="${esc(r.id)}">Edit question</button><button type="button" data-delete-request="${esc(r.id)}">Delete exchange</button></div>${(r.attachments || []).map(f => `<small> · ${esc(f.filename)} (student upload)</small>`).join("")}</div>${englishMarkup(r)}<article class="answer" dir="auto"><p>${esc(r.answer || r.error?.message || (r.status === "pending" ? "Preparing your answer…" : "No answer was produced."))}</p>${r.example ? `<div class="example"><strong>Generated practice example</strong><p>${esc(r.example)}</p></div>` : ""}<div>${(r.sources || []).map((s) => `<button class="source-chip" data-source="${esc(s.id)}" data-request="${r.id}">▣ ${esc(s.filename)} · ${esc(s.locator)}</button>`).join("")}</div><small>${esc(r.status)}</small><div class="feedback"><button data-feedback="helpful" data-request="${r.id}" aria-label="Helpful response">♧ Helpful</button><button data-feedback="unhelpful" data-request="${r.id}">Not helpful</button><button data-feedback="issue" data-request="${r.id}">⚑ Report an issue</button></div></article>`;
 }
 function privacy(m) {
   const c = cfg(m);
