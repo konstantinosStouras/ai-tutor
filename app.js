@@ -139,8 +139,8 @@ function shell(content, selected = null, student = false) {
       else location.hash = `/admin/${select.value}`;
     };
 }
-function bindActions() {
-  document
+function bindActions(root = document) {
+  root
     .querySelectorAll("[data-action]")
     .forEach(
       (b) => (b.onclick = () => run(() => actions[b.dataset.action](b), b)),
@@ -246,9 +246,18 @@ async function admin(m, tab = "overview") {
     content = `<form id="draft" class="card form">${details(c)}<button class="primary">Save draft</button></form>`;
   if (tab === "behavior")
     content = `<form id="draft" class="card form">${area("Tutoring rules", "rules", c.rules)}${area("Starter questions (one per line)", "starters", c.starters.join("\n"))}<label class="check"><input type="checkbox" name="hints" ${c.hints ? "checked" : ""}> Offer hints before complete solutions</label><label class="check"><input type="checkbox" name="examples" ${c.examples ? "checked" : ""}> Allow clearly labelled, generated practice examples</label><button class="primary">Save draft</button></form>`;
+  let initialMaterials;
   if (tab === "materials") {
-    const rows = await api("materials", { module: m.id });
-    content = `<div class="warning">Supported: PDF, DOCX, PPTX, TXT and Markdown. Maximum 8 MB per file, 30 files / 100 MB / 600 indexed chunks per module. Scanned text, diagrams and equations are not interpreted reliably. Inspect extracted sources in preview.</div><form id="upload" class="card form"><h2>Add teaching material</h2><p>Configure a provider connection before processing files.</p><label>File<input name="file" type="file" accept=".pdf,.docx,.pptx,.txt,.md" required></label><label>Audience<select name="audience"><option value="instructors">Private, instructor only (default)</option><option value="students">Student retrieval</option></select></label><label class="check"><input type="checkbox" name="authorized" required> I am authorized to use this material for this module and to send its extracted text to the configured AI provider.</label><button class="primary">Upload & process</button><p id="upload-progress" role="status"></p></form><div class="scroll"><table><thead><tr><th>Material</th><th>Audience</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.filename)}<br><small>${esc(r.warning || r.error)}<br>Version ${esc(r.version.slice(0, 10))}</small></td><td>${esc(r.audience)}</td><td>${esc(r.state)}${r.state === "removed" ? ` · cleanup ${esc(r.cleanup)}` : ""}</td><td>${r.state !== "removed" ? `<button data-action="removeMaterial" data-material="${r.id}">Remove</button>` : ""}${["failed", "processing", "uploaded"].includes(r.state) ? `<button data-action="retryMaterial" data-material="${r.id}">Retry</button>` : ""}</td></tr>`).join("") || '<tr><td colspan="4">No materials uploaded.</td></tr>'}</tbody></table></div><p class="muted">Removing a file excludes it from new answers immediately. Previously generated text can still contain information from that file. Old assistant answers are never reused as model context.</p>`;
+    initialMaterials = await api("materials", { module: m.id });
+    content = `<form id="upload" class="card form"><h2>Add teaching materials</h2>
+      <p>Choose PDF, DOCX, PPTX, TXT or Markdown files. Each file can hold up to 20 MiB, 400 PDF pages and 1,000 indexed passages. A module can hold 120 files, 1 GiB and 24,000 passages.</p>
+      <label>Files<input name="file" type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" required></label>
+      <label>Audience<select name="audience"><option value="instructors">Private, instructor only (default)</option><option value="students">Student retrieval</option></select></label>
+      <label class="check"><input type="checkbox" name="authorized" required> I am authorized to use these materials for this module and to send their extracted text to the configured AI provider.</label>
+      <button class="primary">Upload files</button><p id="upload-progress" role="status"></p><ul id="upload-errors"></ul></form>
+      <p>Keep this tab open until the uploads finish. Indexing then continues in the background. Publish a new version when your student readings are ready.</p>
+      <p id="index-summary" role="status"></p><div class="scroll"><table><thead><tr><th>Material</th><th>Audience</th><th>Status</th><th>Actions</th></tr></thead><tbody id="material-rows"></tbody></table></div>
+      <p class="muted">Scans, diagrams and equations may need a text alternative. Check the cited excerpts in preview.</p>`;
   }
   if (tab === "provider") {
     const choices = state.connections.filter((x) => !x.revoked);
@@ -387,32 +396,7 @@ async function admin(m, tab = "overview") {
           await render();
         }, e.submitter);
       };
-  if ($("#upload"))
-    $("#upload").onsubmit = (e) => {
-      e.preventDefault();
-      run(async () => {
-        const file = e.target.elements.file.files[0];
-        if (file.size > 8 * 1024 * 1024)
-          throw Error("Maximum file size is 8 MB.");
-        $("#upload-progress").textContent =
-          "Uploading, extracting and indexing. This can take up to two minutes…";
-        const base64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(",")[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-        await api("upload", {
-          module: m.id,
-          filename: file.name,
-          base64,
-          audience: e.target.elements.audience.value,
-          authorized: e.target.elements.authorized.checked,
-        });
-        notify("Material ready. Review the excerpts in preview.");
-        await render();
-      }, e.submitter);
-    };
+  if (initialMaterials) bindMaterials(m.id, initialMaterials);
   if ($("#filter"))
     $("#filter").oninput = (e) => {
       document
@@ -425,6 +409,77 @@ async function admin(m, tab = "overview") {
         );
     };
 }
+
+function bindMaterials(moduleId, initial) {
+  const form = $("#upload"), table = $("#material-rows"), summary = $("#index-summary");
+  const status = $("#upload-progress"), errors = $("#upload-errors");
+  let timer, refreshing = false, refreshAgain = false;
+  const active = row => ["uploaded", "queued", "processing"].includes(row.state);
+  function paint(rows) {
+    const files = rows.filter(r => r.state !== "removed");
+    summary.textContent = files.length ? `${files.filter(r => r.state === "ready").length} of ${files.length} files ready · ${files.filter(active).length} pending · ${files.filter(r => r.state === "failed").length} failed` : "";
+    table.innerHTML = rows.map(r => {
+      const progress = r.state === "processing" && r.total ? `<progress aria-label="Passages indexed" value="${Number(r.indexed) || 0}" max="${Number(r.total)}"></progress> ${Number(r.indexed) || 0}/${Number(r.total)}` : "";
+      const retry = r.canRetry ?? (r.state === "failed");
+      return `<tr><td>${esc(r.filename)}<br><small>${esc(r.error || r.warning)}</small></td><td>${esc(r.audience)}</td><td>${esc(r.state === "processing" ? r.stage || "Processing" : r.state)} ${progress}</td><td>${r.state !== "removed" ? `<button data-action="removeMaterial" data-material="${esc(r.id)}">Remove</button>` : ""}${retry ? `<button data-action="retryMaterial" data-material="${esc(r.id)}">Retry</button>` : ""}</td></tr>`;
+    }).join("") || '<tr><td colspan="4">No materials uploaded.</td></tr>';
+    bindActions(table);
+    return rows.some(active);
+  }
+  async function refreshRows() {
+    clearTimeout(timer);
+    if (!form.isConnected) return;
+    if (refreshing) { refreshAgain = true; return; }
+    refreshing = true;
+    let pending = true;
+    try {
+      const rows = await api("materials", { module: moduleId });
+      if (form.isConnected) pending = paint(rows);
+    } catch (error) {
+      summary.textContent = "Progress refresh delayed. " + error.message;
+    } finally {
+      refreshing = false;
+      if (form.isConnected && (pending || refreshAgain)) timer = setTimeout(refreshRows, refreshAgain ? 0 : 4000);
+      refreshAgain = false;
+    }
+  }
+  form.addEventListener("materials-updated", refreshRows);
+  if (paint(initial)) timer = setTimeout(refreshRows, 4000);
+  form.onsubmit = e => {
+    e.preventDefault();
+    const files = [...form.elements.file.files], audience = form.elements.audience.value;
+    const authorized = form.elements.authorized.checked, epoch = authEpoch;
+    run(async () => {
+      errors.replaceChildren();
+      let accepted = 0;
+      for (const [i, file] of files.entries()) {
+        if (epoch !== authEpoch) break;
+        status.textContent = `Uploading ${i+1} of ${files.length} · ${file.name}`;
+        try {
+          if (file.size > 20 * 1024 ** 2) throw Error("Maximum file size is 20 MiB.");
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(",")[1]);
+            reader.onerror = () => reject(Error("Could not read the selected file."));
+            reader.readAsDataURL(file);
+          });
+          if (epoch !== authEpoch) break;
+          await api("upload", { module: moduleId, filename: file.name, base64, audience, authorized });
+          accepted++;
+          void refreshRows();
+        } catch (error) {
+          const item = document.createElement("li");
+          item.textContent = file.name + " — " + error.message;
+          errors.append(item);
+        }
+      }
+      status.textContent = `${accepted} of ${files.length} files uploaded. See indexing progress below.`;
+      form.elements.file.value = "";
+      await refreshRows();
+    }, e.submitter);
+  };
+}
+
 function tutorModelOptions(connection, current = "") {
   const models = connection?.models || [];
   const recommended = state.catalog.openai?.recommendedModel || "gpt-6.2-sol";
@@ -457,14 +512,14 @@ const actions = {
         })
       ).notice,
     );
-    await render();
+    $("#upload")?.dispatchEvent(new Event("materials-updated"));
   },
   async retryMaterial(b) {
     await api("retryMaterial", {
       module: currentModule().id,
       material: b.dataset.material,
     });
-    await render();
+    $("#upload")?.dispatchEvent(new Event("materials-updated"));
   },
   async revoke(b) {
     await api("revoke", { connection: b.dataset.connection });
